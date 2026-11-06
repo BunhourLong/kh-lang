@@ -36,7 +36,7 @@ compounds for "សូមស្វាគមន៍មកកាន់ប្រទ�
 cluster and preserves losslessness; mixed digits/ZWSP/emoji/trailing-coeng is lossless.
 Verification: same as T2.
 
-## T4 core-segmenter — implementer (after T3)
+## T4 core-segmenter — DONE
 `Segmenter` type in `crates/kh-lang-core/src/segmenter.rs`:
 - `Segmenter::new()` (embedded dict, Bimm), `.builder()` -> `SegmenterBuilder`
   (mode, dictionary override, extra words).

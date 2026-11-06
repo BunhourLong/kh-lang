@@ -15,15 +15,19 @@
 //! - [`matcher`] — cluster-aligned matching over that dictionary with
 //!   [`bimm`] (bidirectional maximal matching) and [`viterbi`] (score-based
 //!   dynamic programming).
+//! - [`segmenter`] — lossless word segmentation into [`Token`]s ([`Segmenter`],
+//!   [`SegmenterBuilder`]) with a configurable [`Mode`] and dictionary, plus
+//!   ZWSP insertion for display.
 //!
-//! Later tasks layer segmentation (`Segmenter`) and the `napi-rs` glue on top
-//! of these. The crate is pure: no `napi`, no `wasm`, no external dependencies.
+//! The `napi-rs` glue lives at the repository root on top of this crate. The
+//! core is pure: no `napi`, no `wasm`, no external dependencies.
 //!
-//! Guarantees relevant to later tasks:
+//! Guarantees:
 //! - [`normalize`] is lossless with respect to *visible* characters: it only
 //!   removes code points that render nothing (ZWSP, BOM). Concatenating
 //!   cluster/`Run` byte-slices in order always reproduces the input exactly.
-//! - Offsets are byte offsets into the input string, stable for slicing.
+//! - Run, cluster and matcher offsets are UTF-8 byte offsets into the input,
+//!   stable for slicing; [`Token`] offsets are UTF-16 code units for JS.
 
 #![deny(missing_docs)]
 
@@ -32,9 +36,11 @@ pub mod dictionary;
 pub mod matcher;
 pub mod normalizer;
 pub mod run;
+pub mod segmenter;
 
 pub use cluster::{Cluster, ClusterIter, clusters};
 pub use dictionary::Dictionary;
 pub use matcher::{bimm, viterbi};
 pub use normalizer::normalize;
 pub use run::{Run, RunKind, runs};
+pub use segmenter::{Mode, Segmenter, SegmenterBuilder, Token};
