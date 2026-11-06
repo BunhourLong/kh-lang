@@ -35,10 +35,25 @@ cat > "$wrapper" <<EOF
 #!/usr/bin/env bash
 cd "$repo"
 export PATH="\$HOME/.cargo/bin:\$PATH"
+title="\$(awk 'NR==1{sub(/^# /,""); print; exit}' "$prompt_file" | cut -c1-100)"
+[ -n "\$title" ] || title="\$(basename "$prompt_file" .md)"
+printf '\n\033[1m── %s ──\033[0m\n' "\$title"
+printf '\033[2m%s\033[0m\n\n' "$prompt_file"
+cat "$prompt_file"
+printf '\n\033[2m── running opencode ──\033[0m\n'
 perl -e 'alarm shift; exec @ARGV or die' "\${AI_TIMEOUT:-900}" \\
-  opencode run -m "$model_spec" --agent "$role" --format json "\$(cat "$prompt_file")" \\
-  > "$events" 2> "$errors"
-echo "\$?" > "$done_file"
+  opencode run -m "$model_spec" --agent "$role" --title "\$title" --format json "\$(cat "$prompt_file")" \\
+  2> "$errors" | tee "$events" | jq -r --unbuffered '
+    if .type == "tool_use" then
+      "▸ " + (.part.tool // "tool")
+      + ((.part.state.input.command // .part.state.input.filePath // "") as \$x
+         | if \$x == "" then "" else ": " + (\$x | split("\n")[0] | .[0:120]) end)
+    elif .type == "text" then "\n" + .part.text
+    else empty end'
+status=\${PIPESTATUS[0]}
+sid="\$(jq -r 'select(.sessionID) | .sessionID' "$events" 2>/dev/null | head -n 1)"
+[ -n "\$sid" ] && printf '\n\033[2msession %s · open with: opencode --session %s\033[0m\n' "\$sid" "\$sid"
+echo "\$status" > "$done_file"
 EOF
 chmod +x "$wrapper"
 
