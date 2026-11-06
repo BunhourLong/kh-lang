@@ -22,3 +22,34 @@ U+17D2, and skips Khmer digit pairs U+17E0..U+17E9.
 machine. The runner now executes the job directly inside the cmux split and signals
 completion via `.kh-lang/jobs/ai-<role>.done`; visibility and fresh-context isolation
 are unchanged. Jobs past ~30k context are also avoided by keeping briefs tight.
+
+## 2026-11-06 — T5 JS surface semantics
+- `dictionary` in the `Segmenter` constructor and `addWords` are ADDITIVE on top of
+  the embedded dictionary (spec calls them "custom words"); v1 has no JS API to
+  replace the base table.
+- `addWords` mutates the receiver and returns a Segmenter so
+  `new Segmenter().addWords([...]).segment(...)` chains (spec #5). Returning a cheap
+  copy is acceptable; object identity is not guaranteed. Returning `void` would
+  violate spec #5.
+- Class `.segment` and `.split` both return `Token[]` (UTF-16 offsets); top-level
+  `segment` returns `string[]`. `.split` is documented as an alias.
+- Stable error codes: `ERR_KH_OPTIONS` (invalid mode/options), `ERR_KH_WORDS` (empty
+  or whitespace-only word, tab/CR/LF in word, non-finite/non-positive/too-large
+  frequency). Invalid frequencies and words must throw, never panic.
+- Generated `index.js` / `index.d.ts` are committed package artifacts;
+  `napi build --platform --no-const-enum` emits string-literal unions instead of
+  const enums.
+
+## 2026-11-06 — T5 review outcome
+- napi-rs converts string enums/typed option objects before the Rust function body,
+  which would bypass custom codes. T5 therefore accepts `Unknown` for options/words
+  and validates inside the body, keeping the generated d.ts typed via `ts_arg_type`.
+  Reviewer accepted the deviation; `ERR_KH_OPTIONS` / `ERR_KH_WORDS` are stable.
+- `addWords` shares the built core segmenter via `Arc` and rebuilds from the custom
+  word list on each call, which deep-clones the 33,895-entry embedded table. Fine for
+  occasional calls; add a core `(word, freq)` builder hook if it becomes hot.
+- Known NIT: a non-array object with a custom prototype (e.g. `Map`, `Date`) is read
+  as an empty word map instead of throwing. Tighten when hardening JS input parsing.
+- Reviewer APPROVE (0 BLOCKING) after one fix round: removed a JS-length-driven
+  `Vec::with_capacity`, corrected `normalize` docs, added own-property guards against
+  prototype pollution. Tester ALL PASS.
