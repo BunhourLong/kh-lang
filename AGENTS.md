@@ -24,8 +24,9 @@ Per task:
 2. Dispatch a **reviewer** (read-only) on the diff: BLOCKING vs NIT findings with
    `file:line`; loop back once max, else STOP and ask the user. **tester** runs the
    final verification commands.
-3. Update `.kh-lang/STATE.md` → commit → after the task is complete, `/clear` the
-   orchestrator and rehydrate from STATE.md only.
+3. Update `.kh-lang/STATE.md` → commit → STOP. The next task always starts in a
+   **fresh session** (new chat/`/clear`), rehydrated from STATE.md only. Never chain
+   tasks in one orchestrator session.
 
 Dispatch is VISIBLE: write the brief to `.kh-lang/prompts/<ID>.md`, then run
 `bash scripts/run-agent.sh <builder|reviewer|tester|scout> .kh-lang/prompts/<ID>.md`.

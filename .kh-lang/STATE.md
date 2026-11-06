@@ -4,12 +4,15 @@
 | T1 data | done | 462aaaa | — |
 | T2 core-foundation | done | 6027859 | — |
 | T3 core-matchers | done | 73ab4a2 | — |
-| T4 core-segmenter | open | | next: run in a fresh session |
+| T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | open | | depends on T4; adds root Cargo.toml/package.json |
 | T6 tests+ci+docs | open | | depends on T5 |
 | T7 review+publish | open | | after T6 |
 
-Verified at T3: 36 unit tests + 5 doctests green; fmt/clippy clean.
-Reviewer findings addressed in 73ab4a2 (see decisions.md).
-Next session: read this file, then dispatch T4 briefly (builder) via
-`bash scripts/run-agent.sh builder .kh-lang/prompts/T4.md`.
+Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
+losslessness checks on Khmer, mixed Latin/digits/emoji, and ZWSP inputs passed.
+Reviewer APPROVE; its 7 NITs were fixed before 1ce81e1 (see decisions.md).
+
+Workflow: `run-agent.sh` now passes the variant as `model#variant` (8e7aa6f).
+Task T4 is complete. STOP here; start T5 in a NEW session, rehydrate from this file
+only, write `.kh-lang/prompts/T5.md`, then dispatch the builder.
