@@ -7,7 +7,7 @@
 | T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
-| T7 review+publish | v0.1.0 tagged; publish partial | 2cdd1cb | npm spam block on kh-lang-win32-x64-msvc; approve 4 staged pkgs; rerun publish |
+| T7 review+publish | v0.1.0 tagged; publish partial | 7230ad3 | npm spam block on kh-lang-win32-x64-msvc; approve 4 staged pkgs; rerun publish |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
 losslessness checks on Khmer, mixed Latin/digits/emoji, and ZWSP inputs passed.
