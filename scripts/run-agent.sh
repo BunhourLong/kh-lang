@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Run one opencode agent as a VISIBLE job: once the run produces a session, a
-# cmux split opens beside this one and attaches to the live run. The split and
-# the per-job server wind down when the script exits.
+# Run one opencode agent as a VISIBLE job. The job itself runs inside a cmux
+# split beside this session; this script waits for its sentinel and prints the
+# distilled reply. Outside cmux the job still runs, unseen.
 # Usage: scripts/run-agent.sh <builder|reviewer|tester|scout> <prompt-file>
-# Run from anywhere inside the repo. Outside cmux it still runs, unseen.
 set -euo pipefail
 
 role="${1:-}"
@@ -17,74 +16,50 @@ esac
 model="${AI_MODEL:-opencode/deepseek-v4.1-flash}"
 variant="${AI_VARIANT:-max}"
 repo="$(git rev-parse --show-toplevel)"
+prompt_file="$(cd "$(dirname "$prompt_file")" && pwd)/$(basename "$prompt_file")"
 jobs="$repo/.kh-lang/jobs"
 events="$jobs/ai-$role.jsonl"
 errors="$jobs/ai-$role.err"
 reply="$jobs/ai-$role.txt"
+done_file="$jobs/ai-$role.done"
+wrapper="$jobs/run-$role.sh"
 mkdir -p "$jobs"
+rm -f "$done_file" "$errors" "$reply"
 
-url=""
+cat > "$wrapper" <<EOF
+#!/usr/bin/env bash
+cd "$repo"
+export PATH="\$HOME/.cargo/bin:\$PATH"
+perl -e 'alarm shift; exec @ARGV or die' "\${AI_TIMEOUT:-900}" \\
+  opencode run -m "$model" --variant "$variant" --agent "$role" --format json "\$(cat "$prompt_file")" \\
+  > "$events" 2> "$errors"
+echo "\$?" > "$done_file"
+EOF
+chmod +x "$wrapper"
+
 surface=""
-server=""
-run=""
-session=""
-work="$(mktemp -d)"
 cleanup() {
   [ -z "$surface" ] || cmux close-surface --surface "$surface" --force > /dev/null 2>&1 || true
-  [ -z "$server" ] || kill "$server" 2> /dev/null || true
-  [ -z "$run" ] || kill "$run" 2> /dev/null || true
-  rm -rf "$work"
 }
 trap cleanup EXIT
 
-# opencode hangs at provider rate limits instead of exiting; a surviving alarm stops it.
-opencode_run() {
-  local timeout="${AI_TIMEOUT:-900}"
-  perl -e 'alarm shift; exec @ARGV or die' "$timeout" opencode run "$@"
-}
-
-watch_job() {
-  local waited=0
-  openssl rand -hex 16 > "$work/password"
-  export OPENCODE_SERVER_PASSWORD="$(cat "$work/password")"
-  (cd "$repo" && exec opencode serve > "$work/serve.log" 2>&1 < /dev/null) &
-  server=$!
-  disown "$server"
-  until [ -n "$url" ] || [ "$waited" -ge 20 ]; do
-    sleep 1; waited=$((waited + 1))
-    url="$(grep -oE 'http://127\.0\.0\.1:[0-9]+' "$work/serve.log" | head -n 1 || true)"
-  done
-  [ -n "$url" ] || { echo "opencode serve didn't start; job runs headless." >&2; return 0; }
-}
-
-watch_job
-
-open_split() {
-  command -v cmux > /dev/null 2>&1 || return 0
-  local waited=0
-  while [ "$waited" -lt "${AI_SPLIT_WAIT:-15}" ]; do
-    session="$(grep -m1 -oE '"sessionID":"[^"]+"' "$events" | head -n1 | cut -d'"' -f4 || true)"
-    [ -n "$session" ] && break
-    kill -0 "$run" 2> /dev/null || return 0
-    sleep 1; waited=$((waited + 1))
-  done
-  [ -n "$session" ] || return 0
-  surface="$(cmux new-split right --command "OPENCODE_SERVER_PASSWORD=$(cat "$work/password") opencode attach $url --dir $repo -s $session" 2> /dev/null \
+if command -v cmux > /dev/null 2>&1; then
+  surface="$(cmux new-split right --command "bash '$wrapper'" 2> /dev/null \
     | grep -oE '^OK surface:[0-9]+' | cut -d ' ' -f 2 || true)"
   [ -n "$surface" ] || echo "Couldn't open a cmux split; the job runs unseen." >&2
-}
+fi
 
-status=0
-if [ -n "$url" ]; then
-  opencode_run --attach "$url" --dir "$repo" -m "$model" --variant "$variant" --agent "$role" --format json "$(cat "$prompt_file")" \
-    > "$events" 2> "$errors" < /dev/null &
-  run=$!
-  open_split
-  wait "$run" || status=$?
-  run=""
+if [ -n "$surface" ]; then
+  waited=0
+  limit=$(( ${AI_TIMEOUT:-900} + 60 ))
+  while [ ! -f "$done_file" ]; do
+    [ "$waited" -lt "$limit" ] || { echo "Job timed out after ${limit}s" >&2; exit 1; }
+    sleep 2; waited=$((waited + 2))
+  done
+  status="$(cat "$done_file" 2>/dev/null || echo 1)"
 else
-  opencode_run --dir "$repo" -m "$model" --variant "$variant" --agent "$role" --format json "$(cat "$prompt_file")" \
-    > "$events" 2> "$errors" < /dev/null || status=$?
+  bash "$wrapper"
+  status="$(cat "$done_file" 2>/dev/null || echo 1)"
 fi
 
 if [ "$status" -eq 142 ]; then
