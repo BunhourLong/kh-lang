@@ -10,10 +10,14 @@
 //! - [`run`] — script classification into `[Khmer][run::RunKind::Khmer] /
 //!   [Other][run::RunKind::Other]` runs ([`runs`]) so algorithms only ever see
 //!   homogeneous scripts.
+//! - [`dictionary`] — the frequency-annotated word list ([`Dictionary`]),
+//!   including the embedded SIL data.
+//! - [`matcher`] — cluster-aligned matching over that dictionary with
+//!   [`bimm`] (bidirectional maximal matching) and [`viterbi`] (score-based
+//!   dynamic programming).
 //!
-//! Later tasks layer dictionary matching (`dictionary`, `matcher`),
-//! segmentation (`Segmenter`) and the `napi-rs` glue on top of these. The
-//! crate is pure: no `napi`, no `wasm`, no external dependencies.
+//! Later tasks layer segmentation (`Segmenter`) and the `napi-rs` glue on top
+//! of these. The crate is pure: no `napi`, no `wasm`, no external dependencies.
 //!
 //! Guarantees relevant to later tasks:
 //! - [`normalize`] is lossless with respect to *visible* characters: it only
@@ -24,9 +28,13 @@
 #![deny(missing_docs)]
 
 pub mod cluster;
+pub mod dictionary;
+pub mod matcher;
 pub mod normalizer;
 pub mod run;
 
 pub use cluster::{Cluster, ClusterIter, clusters};
+pub use dictionary::Dictionary;
+pub use matcher::{bimm, viterbi};
 pub use normalizer::normalize;
 pub use run::{Run, RunKind, runs};
