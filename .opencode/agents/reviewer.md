@@ -22,7 +22,8 @@ Review only the diff/commit range named in the prompt and the code it touches. C
   mixed Latin/digit runs, emoji, truncated input.
 - No panics/unwrap/expect in non-test code; no unbounded allocations on attacker input.
 - Core purity: no napi/wasm types in `crates/kh-lang-core`; zero external deps.
-- Scope creep and unnecessary abstraction.
+- Scope creep and unnecessary abstraction (ponytail lens): flag unneeded dependencies,
+  one-off abstractions, boilerplate, or config as NITs; note the simpler alternative.
 - Doc comments on public items; errors structured, not stringly typed.
 
 Report ONLY: numbered findings, each BLOCKING or NIT, `path:line`, one-line reason,

@@ -25,6 +25,9 @@ Rules:
   start a token.
 - Losslessness is invariant: concatenating tokens always reproduces the input.
 - `export PATH="$HOME/.cargo/bin:$PATH"` before cargo commands.
+- Load the `ponytail` skill (`full`) before implementing: simplest working diff, reuse
+  stdlib/existing code, no speculative abstractions or boilerplate. Never simplify away
+  required tests, validation, or the task's acceptance criteria.
 - DONE = `cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test`
   exit 0 (run `cargo fmt` once first if needed).
 - If the brief is wrong or ambiguous, stop and report with evidence instead of guessing.
