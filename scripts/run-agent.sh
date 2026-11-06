@@ -15,6 +15,11 @@ esac
 
 model="${AI_MODEL:-opencode/deepseek-v4.1-flash}"
 variant="${AI_VARIANT:-max}"
+model_spec="$model"
+case "$model" in
+  *"#"*) ;;
+  *) [ -z "$variant" ] || model_spec="$model#$variant" ;;
+esac
 repo="$(git rev-parse --show-toplevel)"
 prompt_file="$(cd "$(dirname "$prompt_file")" && pwd)/$(basename "$prompt_file")"
 jobs="$repo/.kh-lang/jobs"
@@ -31,7 +36,7 @@ cat > "$wrapper" <<EOF
 cd "$repo"
 export PATH="\$HOME/.cargo/bin:\$PATH"
 perl -e 'alarm shift; exec @ARGV or die' "\${AI_TIMEOUT:-900}" \\
-  opencode run -m "$model" --variant "$variant" --agent "$role" --format json "\$(cat "$prompt_file")" \\
+  opencode run -m "$model_spec" --agent "$role" --format json "\$(cat "$prompt_file")" \\
   > "$events" 2> "$errors"
 echo "\$?" > "$done_file"
 EOF
