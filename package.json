@@ -28,6 +28,7 @@
   "scripts": {
     "build": "napi build --platform --release --no-const-enum",
     "build:debug": "napi build --platform --no-const-enum",
+    "pretest": "napi build --platform --no-const-enum",
     "test": "node --test test/"
   },
   "devDependencies": {

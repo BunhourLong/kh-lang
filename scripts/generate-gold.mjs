@@ -1,0 +1,166 @@
+// Regenerates `test/fixtures/gold-100.mjs`.
+//
+// Provenance: every sentence is the concatenation of 2–6 distinct headwords
+// from `data/khmer.lbdict.txt`, and `gold` is exactly that headword sequence.
+// The boundaries therefore come from the dictionary, not from a segmenter.
+// Each candidate is checked for dictionary membership and for
+// `gold.join('') === text`, and no candidate is filtered by whether `bimm` or
+// `viterbi` reproduces the gold split. A fixed number of sentences are sampled
+// because the two modes disagree on their token boundaries; the rest are
+// ordinary dictionary-built sentences.
+//
+// Fixed seed 0x9e3779b9; regeneration is deterministic.
+//
+// Run from the repository root after `napi build --platform`:
+//   node scripts/generate-gold.mjs
+
+import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+import { Segmenter } from '../index.js'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const root = join(here, '..')
+
+const SENTENCE_COUNT = 100
+const DISAGREEMENT_COUNT = 25
+const CANDIDATE_COUNT = 2500
+const MAX_TEXT_LENGTH = 90
+
+const khmerWord = /^[\u1780-\u17D3]+$/u
+
+/** @type {Map<string, number>} */
+const dictionary = new Map()
+for (const line of readFileSync(join(root, 'data', 'khmer.lbdict.txt'), 'utf8').split('\n')) {
+  const [word, freq] = line.split('\t')
+  if (!word || !khmerWord.test(word)) continue
+  const value = Number(freq)
+  dictionary.set(word, Number.isFinite(value) ? value : 10_000)
+}
+
+/** Frequent, well-formed words keep the sentences natural-looking. */
+const pool = [...dictionary.entries()]
+  .filter(([word, freq]) => freq >= 500 && word.length >= 2 && word.length <= 12)
+  .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+  .slice(0, 2500)
+  .map(([word]) => word)
+
+let state = 0x9e3779b9
+function random() {
+  state ^= state << 13
+  state ^= state >>> 17
+  state ^= state << 5
+  return (state >>> 0) / 0x1_0000_0000
+}
+
+/** @param {string[]} list */
+function pick(list) {
+  return list[Math.floor(random() * list.length)]
+}
+
+/**
+ * @param {string[]} tokens
+ * @returns {string}
+ */
+function boundarySignature(tokens) {
+  const boundaries = new Set()
+  let offset = 0
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    offset += tokens[index].length
+    boundaries.add(offset)
+  }
+  return [...boundaries].sort((a, b) => a - b).join(',')
+}
+
+const bimm = new Segmenter({ mode: 'bimm' })
+const viterbi = new Segmenter({ mode: 'viterbi' })
+const seen = new Set()
+const candidates = []
+
+while (candidates.length < CANDIDATE_COUNT) {
+  const count = 2 + Math.floor(random() * 5)
+  const words = []
+  while (words.length < count) {
+    const word = pick(pool)
+    if (!words.includes(word)) words.push(word)
+  }
+
+  const text = words.join('')
+  if (text.length > MAX_TEXT_LENGTH || seen.has(text)) continue
+  seen.add(text)
+
+  const bimmTokens = bimm.segment(text).map((token) => token.text)
+  const viterbiTokens = viterbi.segment(text).map((token) => token.text)
+  candidates.push({
+    text,
+    gold: words,
+    disagree: boundarySignature(bimmTokens) !== boundarySignature(viterbiTokens),
+  })
+}
+
+const disagreements = candidates.filter((candidate) => candidate.disagree)
+const agreements = candidates.filter((candidate) => !candidate.disagree)
+if (disagreements.length < DISAGREEMENT_COUNT) {
+  throw new Error(
+    `only ${disagreements.length} mode disagreements in ${candidates.length} candidates`,
+  )
+}
+
+const selected = [
+  ...disagreements.slice(0, DISAGREEMENT_COUNT),
+  ...agreements.slice(0, SENTENCE_COUNT - DISAGREEMENT_COUNT),
+]
+const order = new Map(candidates.map((candidate, index) => [candidate, index]))
+selected.sort((a, b) => order.get(a) - order.get(b))
+
+if (selected.length !== SENTENCE_COUNT) {
+  throw new Error(`expected ${SENTENCE_COUNT} sentences, got ${selected.length}`)
+}
+
+for (const { text, gold } of selected) {
+  if (gold.join('') !== text) {
+    throw new Error(`gold does not reconstruct text: ${JSON.stringify(text)}`)
+  }
+  if (gold.length < 2 || gold.length > 6) {
+    throw new Error(`expected 2-6 gold words: ${JSON.stringify(text)}`)
+  }
+  if (new Set(gold).size !== gold.length) {
+    throw new Error(`gold words are not distinct: ${JSON.stringify(text)}`)
+  }
+  if (!/^[\u1780-\u17D3]+$/u.test(text)) {
+    throw new Error(`sentence is not pure Khmer: ${JSON.stringify(text)}`)
+  }
+  for (const word of gold) {
+    if (!dictionary.has(word)) {
+      throw new Error(`gold word is not an embedded headword: ${JSON.stringify(word)}`)
+    }
+  }
+}
+if (new Set(selected.map(({ text }) => text)).size !== selected.length) {
+  throw new Error('duplicate sentence')
+}
+
+const lines = selected.map(
+  ({ text, gold }) =>
+    `  { text: ${JSON.stringify(text)}, gold: [${gold.map((word) => JSON.stringify(word)).join(', ')}] },`,
+)
+
+writeFileSync(
+  join(root, 'test', 'fixtures', 'gold-100.mjs'),
+  `// Generated by scripts/generate-gold.mjs — do not edit by hand.\n` +
+    `//\n` +
+    `// Provenance: each sentence concatenates 2–6 distinct headwords from\n` +
+    `// data/khmer.lbdict.txt; \`gold\` is exactly that headword sequence, so the\n` +
+    `// boundaries are known by construction, not by running a segmenter. Every\n` +
+    `// gold token is verified against the embedded dictionary and\n` +
+    `// \`gold.join("") === text\` is checked. ${DISAGREEMENT_COUNT} sentences were\n` +
+    `// sampled because bimm and viterbi disagree on their token boundaries; no\n` +
+    `// candidate was filtered by which mode matched the gold split.\n` +
+    `//\n` +
+    `// Fixed seed 0x9e3779b9; regeneration is deterministic.\n` +
+    `export const gold100 = [\n${lines.join('\n')}\n]\n`,
+)
+
+console.log(
+  `wrote ${selected.length} sentences (${DISAGREEMENT_COUNT} mode disagreements)`,
+)
