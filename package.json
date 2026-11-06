@@ -13,7 +13,8 @@
     "index.d.ts",
     "*.node",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "licenses"
   ],
   "napi": {
     "binaryName": "kh-lang",
