@@ -14,12 +14,11 @@ npm install kh-lang
 ```
 
 Requires Node.js 18 or newer. The package is a native addon built with
-[napi-rs](https://napi.rs/). The `napi.targets` configuration lists five
-targets: macOS (x64/arm64), Linux (x64/arm64), and Windows (x64). CI verifies a
-host build and the test suite on macOS, Linux, and Windows runners; it does not
-cross-build or verify every configured target, so a matching prebuilt binary
-may not exist for your platform. For other platforms, or to build against a
-local Rust toolchain, see [Build from source](#build-from-source).
+[napi-rs](https://napi.rs/). Prebuilt binaries ship for macOS (x64/arm64),
+Linux glibc (x64/arm64), and Windows (x64) as platform packages
+(`kh-lang-<platform>`) that npm installs automatically through
+`optionalDependencies`. Every other platform needs a local Rust toolchain; see
+[Build from source](#build-from-source).
 
 ## Quick start
 

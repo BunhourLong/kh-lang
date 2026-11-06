@@ -1,0 +1,40 @@
+{
+  "name": "kh-lang-linux-x64-gnu",
+  "version": "0.1.0",
+  "main": "kh-lang.linux-x64-gnu.node",
+  "files": [
+    "kh-lang.linux-x64-gnu.node"
+  ],
+  "description": "Khmer word segmentation for Node.js, powered by a pure-Rust core.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BunhourLong/kh-lang.git"
+  },
+  "homepage": "https://github.com/BunhourLong/kh-lang#readme",
+  "bugs": {
+    "url": "https://github.com/BunhourLong/kh-lang/issues"
+  },
+  "keywords": [
+    "khmer",
+    "segmentation",
+    "word-break",
+    "tokenizer",
+    "napi"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ]
+}

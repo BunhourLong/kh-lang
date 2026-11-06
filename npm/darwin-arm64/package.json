@@ -1,0 +1,37 @@
+{
+  "name": "kh-lang-darwin-arm64",
+  "version": "0.1.0",
+  "main": "kh-lang.darwin-arm64.node",
+  "files": [
+    "kh-lang.darwin-arm64.node"
+  ],
+  "description": "Khmer word segmentation for Node.js, powered by a pure-Rust core.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BunhourLong/kh-lang.git"
+  },
+  "homepage": "https://github.com/BunhourLong/kh-lang#readme",
+  "bugs": {
+    "url": "https://github.com/BunhourLong/kh-lang/issues"
+  },
+  "keywords": [
+    "khmer",
+    "segmentation",
+    "word-break",
+    "tokenizer",
+    "napi"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ]
+}

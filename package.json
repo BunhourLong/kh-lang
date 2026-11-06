@@ -3,15 +3,32 @@
   "version": "0.1.0",
   "description": "Khmer word segmentation for Node.js, powered by a pure-Rust core.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BunhourLong/kh-lang.git"
+  },
+  "homepage": "https://github.com/BunhourLong/kh-lang#readme",
+  "bugs": {
+    "url": "https://github.com/BunhourLong/kh-lang/issues"
+  },
+  "keywords": [
+    "khmer",
+    "segmentation",
+    "word-break",
+    "tokenizer",
+    "napi"
+  ],
   "main": "index.js",
   "types": "index.d.ts",
   "engines": {
     "node": ">=18"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "index.js",
     "index.d.ts",
-    "*.node",
     "README.md",
     "LICENSE",
     "licenses"
@@ -30,7 +47,10 @@
     "build": "napi build --platform --release --no-const-enum",
     "build:debug": "napi build --platform --no-const-enum",
     "pretest": "napi build --platform --no-const-enum",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "artifacts": "napi artifacts",
+    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
+    "version": "napi version"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.10.12",
