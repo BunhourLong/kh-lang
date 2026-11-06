@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust:
+    name: rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  node:
+    name: node (${{ matrix.os }}, ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit
+
+  pack:
+    name: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: npm test
+      - run: node scripts/generate-gold.mjs && git diff --exit-code -- test/fixtures/gold-100.mjs
+      - run: npm pack --dry-run --json > pack.json
+      - name: Verify package contents
+        run: |
+          node - <<'NODE'
+          const { readFileSync } = require('node:fs')
+          const [pack] = JSON.parse(readFileSync('pack.json', 'utf8'))
+          const files = pack.files.map((file) => file.path)
+
+          for (const required of [
+            'index.js',
+            'index.d.ts',
+            'README.md',
+            'LICENSE',
+            'licenses/khmerlbdict-LICENSE',
+          ]) {
+            if (!files.includes(required)) {
+              throw new Error(`missing required file: ${required}`)
+            }
+          }
+          if (!files.some((file) => file.endsWith('.node') && !file.includes('/'))) {
+            throw new Error('missing native .node binary')
+          }
+          for (const forbidden of ['test/', '.kh-lang/', 'target/', 'node_modules/']) {
+            if (files.some((file) => file.startsWith(forbidden))) {
+              throw new Error(`unexpected package entry under ${forbidden}`)
+            }
+          }
+
+          console.log(`package contents ok (${files.length} files)`)
+          NODE
