@@ -53,3 +53,24 @@ are unchanged. Jobs past ~30k context are also avoided by keeping briefs tight.
 - Reviewer APPROVE (0 BLOCKING) after one fix round: removed a JS-length-driven
   `Vec::with_capacity`, corrected `normalize` docs, added own-property guards against
   prototype pollution. Tester ALL PASS.
+
+## 2026-11-06 — T6 tests/CI/docs
+- `node:test` acceptance suite (no jest/vitest): exact segmentation, losslessness in
+  both modes, UTF-16 offsets, `insertZwsp`, custom words/chaining, stable error codes,
+  malformed-UTF-16 no-abort, package type surface.
+- Gold fixture: 100 unique pure-Khmer sentences built from embedded-dictionary
+  headwords (gold by construction, every token dictionary-verified), fixed seed,
+  25 bimm/viterbi disagreement sentences, selected without correctness filtering.
+  F1: bimm 0.9439, viterbi 0.9847 (viterbi >= bimm).
+- N-API converts lone/unpaired UTF-16 surrogates to U+FFFD, so losslessness is
+  guaranteed for well-formed strings only; `segment("\uD800")` never panics
+  (spec #4). Documented in README.
+- CI: Rust fmt/clippy/test; native build matrix 3 OSes x Node 18/20; `npm test`
+  self-contained via `pretest`; generator determinism guard; `npm pack` asserts
+  JS/d.ts/README/LICENSE/licenses/*.node and no test/.kh-lang/target artifacts.
+- Known NIT accepted: `.npmignore` is advisory because package.json `files` is
+  authoritative; the pack assertion is the real guard.
+- Workflow: `run-agent.sh` prints the brief, titles the session, streams tool
+  activity, and prints `opencode --session <id>` so jobs are inspectable in OpenCode.
+- Ponytail is now required before code work (global AGENTS.md) and applied in the
+  builder/reviewer agent instructions, subordinate to the quality rules.
