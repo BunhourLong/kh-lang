@@ -19,35 +19,13 @@ export function countZwsp(text) {
 }
 
 /**
- * Node 18-compatible well-formedness conversion.
- *
- * N-API exposes Rust `String` values, so a JavaScript string is encoded as
- * UTF-8 on the way in. Lone UTF-16 surrogates have no UTF-8 representation and
- * are replaced with U+FFFD before the core sees them. This helper reproduces
- * that conversion without relying on newer runtime methods, so tests also run
- * on Node 18.
+ * N-API encodes JavaScript strings as UTF-8, so lone UTF-16 surrogates reach
+ * the core as U+FFFD; this mirrors that conversion.
  *
  * @param {string} text
  */
 export function wellFormed(text) {
-  let result = ''
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index)
-    if (code >= 0xd800 && code <= 0xdbff) {
-      const next = text.charCodeAt(index + 1)
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        result += text[index] + text[index + 1]
-        index += 1
-      } else {
-        result += '\uFFFD'
-      }
-    } else if (code >= 0xdc00 && code <= 0xdfff) {
-      result += '\uFFFD'
-    } else {
-      result += text[index]
-    }
-  }
-  return result
+  return text.toWellFormed()
 }
 
 /** @param {number} code */

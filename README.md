@@ -13,7 +13,7 @@ one function, a reusable `Segmenter` class, and a small normalizer.
 npm install kh-lang
 ```
 
-Requires Node.js 18 or newer. The package is a native addon built with
+Requires Node.js 20 or newer. The package is a native addon built with
 [napi-rs](https://napi.rs/). Prebuilt binaries ship for macOS (x64/arm64),
 Linux glibc (x64/arm64), and Windows (x64) as platform packages
 (`kh-lang-<platform>`) that npm installs automatically through
@@ -143,7 +143,7 @@ The embedded dictionary still works after adding custom words.
 
 ## Build from source
 
-Prerequisites: Node.js 18+, npm, and a stable Rust toolchain with `rustfmt` and
+Prerequisites: Node.js 20+, npm, and a stable Rust toolchain with `rustfmt` and
 `clippy`.
 
 ```sh
