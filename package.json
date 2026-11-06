@@ -1,0 +1,37 @@
+{
+  "name": "kh-lang",
+  "version": "0.1.0",
+  "description": "Khmer word segmentation for Node.js, powered by a pure-Rust core.",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node",
+    "README.md",
+    "LICENSE"
+  ],
+  "napi": {
+    "binaryName": "kh-lang",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release --no-const-enum",
+    "build:debug": "napi build --platform --no-const-enum",
+    "test": "node --test test/"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.10.12",
+    "typescript": "^5.9.0"
+  }
+}

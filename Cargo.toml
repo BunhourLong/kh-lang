@@ -1,0 +1,23 @@
+[package]
+name = "kh-lang"
+version = "0.1.0"
+edition = "2024"
+description = "Node.js bindings for the kh-lang Khmer word segmentation core."
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/index.rs"
+
+[workspace]
+members = ["crates/kh-lang-core"]
+resolver = "3"
+
+[dependencies]
+kh-lang-core = { path = "crates/kh-lang-core" }
+napi = { version = "3", features = ["napi8"] }
+napi-derive = "3"
+
+[build-dependencies]
+napi-build = "2"
