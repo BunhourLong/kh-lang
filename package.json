@@ -47,7 +47,7 @@
     "build": "napi build --platform --release --no-const-enum",
     "build:debug": "napi build --platform --no-const-enum",
     "pretest": "napi build --platform --no-const-enum",
-    "test": "node --test test/",
+    "test": "node --test",
     "artifacts": "napi artifacts",
     "prepublishOnly": "napi prepublish -t npm --no-gh-release",
     "version": "napi version"
