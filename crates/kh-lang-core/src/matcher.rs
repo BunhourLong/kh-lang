@@ -284,25 +284,36 @@ mod tests {
         // anything.
         let text = "គគគគគ";
         let dict = Dictionary::embedded();
+        let cluster_count = clusters(text).count();
         for ranges in [bimm(dict, text), viterbi(dict, text)] {
-            assert!(!ranges.is_empty());
+            assert_eq!(ranges.len(), cluster_count);
             assert_lossless(text, &ranges);
         }
     }
 
     #[test]
-    fn welcome_sentence_viterbi_is_lossless_and_multi_token() {
+    fn mixed_scripts_emoji_and_trailing_coeng_are_lossless() {
+        let dict = Dictionary::embedded();
+        // Digits, ZWSP, emoji, a full Khmer word and a dangling coeng.
+        let text = "a\u{200B}ខ្ញុំ🙂123ក្";
+        for ranges in [bimm(dict, text), viterbi(dict, text)] {
+            assert_lossless(text, &ranges);
+        }
+    }
+
+    #[test]
+    fn welcome_sentence_both_matchers_agree_on_dictionary_compounds() {
+        // All three outputs are dictionary words: សូមស្វាគមន៍ (46),
+        // មកកាន់ (69), ប្រទេសកម្ពុជា (577). Three tokens is the correct
+        // segmentation here — do not force a higher count.
         let text = "សូមស្វាគមន៍មកកាន់ប្រទេសកម្ពុជា";
         let dict = Dictionary::embedded();
-        let ranges = viterbi(dict, text);
-        assert_lossless(text, &ranges);
-        assert!(
-            ranges.len() >= 3,
-            "expected >= 3 tokens, got {} ({:?})",
-            ranges.len(),
-            spans(text, &ranges)
-        );
-        assert_lossless(text, &bimm(dict, text));
+        let viterbi_ranges = viterbi(dict, text);
+        let bimm_ranges = bimm(dict, text);
+        let expected = ["សូមស្វាគមន៍", "មកកាន់", "ប្រទេសកម្ពុជា"];
+        assert_eq!(spans(text, &viterbi_ranges), expected);
+        assert_eq!(bimm_ranges, viterbi_ranges);
+        assert_lossless(text, &viterbi_ranges);
     }
 
     #[test]

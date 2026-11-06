@@ -31,9 +31,9 @@ Verification: `cargo fmt --all --check && cargo clippy --all-targets -- -D warni
 - `matcher::viterbi(&Dictionary, &str) -> Vec<Range<usize>>`: HMM-lite DP: score(word) =
   log(freq / Σfreq) as f64; unseen-word emissions use a small constant cost so OOV is
   handled by splitting, never by discarding chars.
-Tests: known examples ខ្ញុំ/ស្រលាញ់/ភ្នំពេញ; equal outputs of bimm vs viterbi on sample
-sentence "សូមស្វាគមន៍មកកាន់ប្រទេសកម្ពុជា"; OOV garbage string returns every char as a
-token and preserves losslessness.
+Tests: known examples ខ្ញុំ/ស្រលាញ់/ភ្នំពេញ; bimm and viterbi both yield the 3 dictionary
+compounds for "សូមស្វាគមន៍មកកាន់ប្រទេសកម្ពុជា"; OOV garbage string returns one token per
+cluster and preserves losslessness; mixed digits/ZWSP/emoji/trailing-coeng is lossless.
 Verification: same as T2.
 
 ## T4 core-segmenter — implementer (after T3)
