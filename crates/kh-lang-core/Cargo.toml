@@ -1,0 +1,8 @@
+[package]
+name = "kh-lang-core"
+version = "0.1.0"
+edition = "2024"
+description = "Pure-Rust Khmer text segmentation core: normalization, grapheme clusters, script runs."
+license = "MIT"
+
+[dependencies]
