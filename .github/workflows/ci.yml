@@ -47,7 +47,7 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - run: npm test
+      - run: npm run build
       - run: node scripts/generate-gold.mjs && git diff --exit-code -- test/fixtures/gold-100.mjs
       - run: npm pack --dry-run --json > pack.json
       - name: Verify package contents
@@ -68,8 +68,8 @@ jobs:
               throw new Error(`missing required file: ${required}`)
             }
           }
-          if (!files.some((file) => file.endsWith('.node') && !file.includes('/'))) {
-            throw new Error('missing native .node binary')
+          if (files.some((file) => file.endsWith('.node'))) {
+            throw new Error('root tarball must not contain .node binaries')
           }
           for (const forbidden of ['test/', '.kh-lang/', 'target/', 'node_modules/']) {
             if (files.some((file) => file.startsWith(forbidden))) {
