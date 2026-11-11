@@ -67,7 +67,33 @@ jobs:
         with:
           path: artifacts
       - run: npm run artifacts
-      - run: npm publish --access public --provenance
+      - name: Publish platform packages (skip already published)
+        run: |
+          set -euo pipefail
+          ver="$(node -p "require('./package.json').version")"
+          for dir in npm/*/; do
+            pkg="$(node -p "require('./${dir}package.json').name")"
+            pv="$(node -p "require('./${dir}package.json').version")"
+            test "$pv" = "$ver" || { echo "::error::$pkg version $pv does not match root $ver"; exit 1; }
+            if npm view "$pkg@$ver" version >/dev/null 2>&1; then
+              echo "::notice::$pkg@$ver already published, skipping"
+            else
+              npm publish "$dir" --access public --provenance
+            fi
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'
+      - name: Publish root package (skip already published)
+        run: |
+          set -euo pipefail
+          ver="$(node -p "require('./package.json').version")"
+          if npm view "kh-lang@$ver" version >/dev/null 2>&1; then
+            echo "::notice::kh-lang@$ver already published, skipping"
+          else
+            node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.optionalDependencies={};for(const d of fs.readdirSync('npm')){const m=JSON.parse(fs.readFileSync('npm/'+d+'/package.json','utf8'));p.optionalDependencies[m.name]=p.version;}fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+            npm publish --ignore-scripts --access public --provenance
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
