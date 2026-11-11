@@ -7,7 +7,7 @@
 | T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
-| T7 review+publish | v0.1.0 tagged; publish partial | 7230ad3 | npm spam block on kh-lang-win32-x64-msvc; approve 4 staged pkgs; rerun publish |
+| T7 review+publish | v0.1.0 tagged; publish idempotent; 4/5 platform pkgs live | 2cf041a | npm spam block still E403 on kh-lang-win32-x64-msvc — user must resolve npm support ticket; then re-tag & rerun; approve staged win32 + root |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
 losslessness checks on Khmer, mixed Latin/digits/emoji, and ZWSP inputs passed.
@@ -38,3 +38,18 @@ Next steps:
 2. The user approves the 4 staged packages (npmjs.com → Staged Packages, with 2FA).
 3. `gh run rerun 42236039161 --failed`.
 4. Approve the staged win32 and root `kh-lang`.
+
+2026-11-11 update: 4 platform pkgs approved & live (darwin-arm64/x64, linux-x64/arm64-gnu @0.1.0).
+Rerun of 42236039161 failed differently: publish is not idempotent — `napi prepublish`
+re-published already-live platform pkgs and died on kh-lang-darwin-x64 E403 before reaching
+win32/root. Fix: release.yml publish job made idempotent (skip `npm view`-published pkgs,
+root optionalDependencies wired manually + `--ignore-scripts`; version-match trust boundary
+in the loop). Impl glm-5.3-flash PASS, reviewer deepseek-v4.1-flash PASS. Committed 2cf041a;
+v0.1.0 tag force-moved to it; new run 43017693366. Context windows on opencode-go for both
+glm-5.3-flash and deepseek-v4.1-flash are 1M tokens — no subagent context cap needed.
+Run 43017693366 result: idempotent skip logic verified live (4 pkgs skipped), but
+kh-lang-win32-x64-msvc publish still E403 "Package name triggered spam detection" — npm
+support ticket is the blocker. The fix works; nothing more to do from CI until npm clears
+the name. When cleared: delete+re-push tag v0.1.0 (or `gh run rerun --failed` only if tag
+still points at 2cf041a) and the publish job will skip the 4 live pkgs, publish win32,
+then root kh-lang.
