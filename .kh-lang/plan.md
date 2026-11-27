@@ -26,6 +26,7 @@
   fast; no async needed in v1).
 - D7: Package: npm name `kh-lang`, root JS shim (index.js) with generated index.d.ts
   (napi generate), CI prebuilt matrix later; local dev via `npx napi build --platform`.
+- D8: Workflow & release hardening: Delikit (`.claude/run-task.md` inheriting `~/.agents/routing.md`), SHA-pinned GitHub Actions with least-privilege permissions and `--ignore-scripts`, Dependabot, pinned SIL dictionary source commit.
 
 ## Files to modify per task (overlap check)
 - T2: crates/kh-lang-core/{Cargo.toml,src/lib.rs,src/normalizer.rs? — keys: mods in lib.rs,
@@ -34,4 +35,5 @@
 - T4: crates/kh-lang-core/src/segmenter.rs, lib.rs mod lines
 - T5: Cargo.toml (root), src/index.rs, package.json, index.js, tsconfig.json
 - T6: test/index.test.mjs, .github/workflows/ci.yml, README.md
-No two tasks share files beyond lib.rs mod lines → sequential dispatch T2→T3→T4→T5→T6.
+- T8 (v0.1.1): crates/kh-lang-core/src/cluster.rs, crates/kh-lang-core/src/segmenter.rs, src/index.rs, test/segment.test.mjs, test/api.test.mjs
+T2–T6 ran sequentially; T8 overlaps segmenter.rs and src/index.rs and runs only after T7 (v0.1.0) completes.

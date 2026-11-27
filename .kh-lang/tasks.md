@@ -62,7 +62,14 @@ Verify: `cargo clippy && cargo build -p kh-lang && npx napi build --platform && 
 →napi build matrix→jest-free npm test), .npmignore, npm pack dry-run check.
 Verify: `npm test` green from clean clone.
 
-## T7 review+publish — orchestrator
+## T7 review+publish — in progress (v0.1.0 completion)
 Reviewer subagent on whole diff; fix loop; split conventional commits; push to
 BunhourLong/kh-lang (origin). No co-author.
+T7a: Delikit refresh (`.claude/run-task.md`, `AGENTS.md`, remove legacy runners), GitHub Actions & supply-chain hardening, and complete `v0.1.0` npm publish (without changing Rust/JS runtime binaries).
+
+## T8 cluster-marks-and-js-validation — next (v0.1.1)
+Allowed files: `crates/kh-lang-core/src/cluster.rs`, `crates/kh-lang-core/src/segmenter.rs`, `src/index.rs`, `test/segment.test.mjs`, `test/api.test.mjs` (plus version bump across `Cargo.toml`, `crates/kh-lang-core/Cargo.toml`, `package.json`, `npm/*/package.json`, `index.js` when releasing `v0.1.1`).
+1. Extend `is_khmer_mark` in `crates/kh-lang-core/src/cluster.rs` to cover `U+17B6..=U+17D1`, `U+17D3`, `U+17DD` (and evaluate `U+17B4..=U+17B5` vowel inherent marks); add regression tests for OOV diacritics (`គ់`, `គ៉ា`, `គ៍`, `ក័ង`) in Rust and Node (`segment` and `insertZwsp` must keep marks attached to the base consonant and never insert ZWSP before a combining mark); verify `test/gold-100.test.mjs` boundary F1 stays green.
+2. Reject non-plain JS objects (`new Date()`, `new Map()`, `/regex/`, `Buffer.from('x')`, `new Uint8Array()`) passed as `options`, `dictionary`, or `addWords` with `ERR_KH_OPTIONS` / `ERR_KH_WORDS` while preserving `Object.create(null)` and plain `{}` literals; add Node regression tests in `test/api.test.mjs`.
+Verification: `export PATH="$HOME/.cargo/bin:$PATH" && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && npm test && npx tsc --noEmit`
 -- STATE.md tracks status per task.

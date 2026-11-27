@@ -7,7 +7,8 @@
 | T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
-| T7 review+publish | v0.1.0 tagged; publish idempotent; 4/5 platform pkgs live | 2cf041a | npm spam block still E403 on kh-lang-win32-x64-msvc — user must resolve npm support ticket; then re-tag & rerun; approve staged win32 + root |
+| T7 review+publish | v0.1.0 ready to rerun (win32 spam block cleared; CI/release hardened, Delikit refreshed) | 2cf041a | finish v0.1.0 release & approve staged root `kh-lang` |
+| T8 cluster-marks-and-js-validation | todo | — | queued for v0.1.1 after v0.1.0 release |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
 losslessness checks on Khmer, mixed Latin/digits/emoji, and ZWSP inputs passed.
@@ -47,9 +48,10 @@ root optionalDependencies wired manually + `--ignore-scripts`; version-match tru
 in the loop). Impl glm-5.3-flash PASS, reviewer deepseek-v4.1-flash PASS. Committed 2cf041a;
 v0.1.0 tag force-moved to it; new run 43017693366. Context windows on opencode-go for both
 glm-5.3-flash and deepseek-v4.1-flash are 1M tokens — no subagent context cap needed.
-Run 43017693366 result: idempotent skip logic verified live (4 pkgs skipped), but
-kh-lang-win32-x64-msvc publish still E403 "Package name triggered spam detection" — npm
-support ticket is the blocker. The fix works; nothing more to do from CI until npm clears
-the name. When cleared: delete+re-push tag v0.1.0 (or `gh run rerun --failed` only if tag
-still points at 2cf041a) and the publish job will skip the 4 live pkgs, publish win32,
-then root kh-lang.
+2026-11-27 update: npm support cleared `kh-lang-win32-x64-msvc` (transferred to
+`bunhourlong`, currently holding `0.0.1-security`; `0.1.0` returns 404). Workflow refreshed
+to Delikit (`.claude/run-task.md`) and `.github/workflows/{ci,release}.yml` hardened with
+zero Rust/JS runtime changes. Next: move tag `v0.1.0` to the hardened release commit and
+push so `Release` runs fresh `verify` + 5-target `build`, skips the 4 live `0.1.0`
+packages, and publishes `kh-lang-win32-x64-msvc@0.1.0` then root `kh-lang@0.1.0` (if
+staged at `0.0.0-stage`, approve Windows first, then root `kh-lang` with 2FA on npmjs.com).

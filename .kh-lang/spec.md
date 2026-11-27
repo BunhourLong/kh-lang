@@ -25,4 +25,9 @@ wasi target added later via napi.targets), no Thai/Lao support.
    `normalize(text)`. TypeScript types shipped; JSDoc on all exports.
 7. `cargo fmt --check && cargo clippy -D warnings && cargo test` green; npm install
    works from a clean clone (`napi build && node test/index.spec.mjs`).
-8. Repo pushed to BunhourLong/kh-lang with split conventional commits and this workflow.
+8. Repo pushed to BunhourLong/kh-lang with split conventional commits and Delikit workflow.
+
+## v0.1.1 hardening & correctness targets
+1. Supply-chain hardened GitHub Actions: SHA-pinned third-party and first-party actions, `permissions: {}` default with least-privilege job scopes, `persist-credentials: false` on checkouts, `--ignore-scripts` on installs/publishes, release verification and binary-presence checks, Dependabot updates, and pinned dictionary source commit.
+2. Complete Khmer combining-mark cluster handling (`U+17C9..=U+17D1`, `U+17D3`, `U+17DD` bound to the preceding base so OOV segmentation and `insert_zwsp` never split a diacritic from its consonant).
+3. Strict plain-object validation for JS `dictionary` / `addWords` inputs (reject non-plain objects such as `Date`, `Map`, `RegExp`, or `Uint8Array` with `ERR_KH_OPTIONS` / `ERR_KH_WORDS`).

@@ -74,3 +74,8 @@ are unchanged. Jobs past ~30k context are also avoided by keeping briefs tight.
   activity, and prints `opencode --session <id>` so jobs are inspectable in OpenCode.
 - Ponytail is now required before code work (global AGENTS.md) and applied in the
   builder/reviewer agent instructions, subordinate to the quality rules.
+
+## 2026-11-27 — Delikit refresh, CI/release hardening, and v0.1.0/v0.1.1 split
+- Migrated project workflow to `delikit` via `.claude/run-task.md` (inheriting `~/.agents/routing.md`) and updated `AGENTS.md`; removed legacy `scripts/run-agent.sh`, `opencode.json`, `.opencode/agents/*`, and `.kh-lang/prompts/*.md`.
+- Hardened `.github/workflows/ci.yml` and `.github/workflows/release.yml` (40-char commit SHA pins for all actions including `dtolnay/rust-toolchain`, top-level `permissions: {}` with least-privilege job scopes, `persist-credentials: false`, `--ignore-scripts`, removed `cache: npm` from `release.yml`, added `verify` job and `.node` binary-presence guard before `npm publish`, sorted directory enumeration and exact `npm view` version matching), added `.github/dependabot.yml`, and pinned `scripts/fetch-dict.sh` to `silnrsi/khmerlbdict` commit `54abc6b87f4ffa6a0c95c09836c7c86648002273`.
+- Version-skew guard: npm support cleared `kh-lang-win32-x64-msvc`, while the 4 macOS/Linux `0.1.0` packages are already live and immutable on npm. Rust/FFI fixes (`T8`: missing Khmer combining marks in `cluster.rs` and strict plain-object validation in `src/index.rs`) are therefore queued for `v0.1.1` after `v0.1.0` completes without binary skew.
