@@ -7,7 +7,7 @@
 | T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
-| T7 review+publish | v0.1.0 verified & built; publish blocked on NPM_TOKEN (4/5 platform pkgs live) | 8e96ef1 | rotate NPM_TOKEN (Read & Write All packages + Bypass 2FA) & rerun 45931018317 |
+| T7 review+publish | v0.1.0 published (Release 45931018317 green; 4/5 live, kh-lang staged 0.0.0-stage, win32 processing/staged) | 8e96ef1 | approve staged packages with 2FA on npmjs.com (win32 if staged, then root kh-lang) |
 | T8 cluster-marks-and-js-validation | todo | — | queued for v0.1.1 after v0.1.0 release |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
@@ -48,15 +48,15 @@ root optionalDependencies wired manually + `--ignore-scripts`; version-match tru
 in the loop). Impl glm-5.3-flash PASS, reviewer deepseek-v4.1-flash PASS. Committed 2cf041a;
 v0.1.0 tag force-moved to it; new run 43017693366. Context windows on opencode-go for both
 glm-5.3-flash and deepseek-v4.1-flash are 1M tokens — no subagent context cap needed.
-2026-11-27 update: npm support cleared `kh-lang-win32-x64-msvc` (transferred to
-`bunhourlong`, currently holding `0.0.1-security`; `0.1.0` returns 404). Refreshed
-orchestration to Delikit (`.claude/run-task.md`, `ac19ad7`), hardened CI/Release
-workflows + Dependabot + `fetch-dict.sh` (`edd270a`), and queued T8 for `v0.1.1`
-(`8e96ef1`) with zero Rust/JS runtime changes. Both CI runs (`45931016494` on `main`,
-`45931018234` on `v0.1.0`) passed. Release `45931018317` passed `check-version`,
-`verify`, and all 5 native `build` jobs, skipped the 4 live `0.1.0` packages, and failed
-in `publish` on `kh-lang-win32-x64-msvc@0.1.0` with `E404 Not Found` on `PUT` due to
-expired/unscoped `NPM_TOKEN` (created `2026-11-06`). Next:
-1. Rotate `NPM_TOKEN` (Granular Access Token with Read & Write on All packages + Bypass 2FA): `gh secret set NPM_TOKEN`
-2. Rerun failed publish job: `gh run rerun 45931018317 --failed`
-3. Approve staged `0.0.0-stage` `kh-lang` (and `win32` if staged) with 2FA on npmjs.com, then switch to npm Trusted Publishing (OIDC) and run `T8` in a fresh Delikit session.
+2026-11-27 update: npm support cleared `kh-lang-win32-x64-msvc`, workflow refreshed
+to Delikit (`.claude/run-task.md`, `ac19ad7`), CI/Release hardened (`edd270a`), and T8
+queued for `v0.1.1` (`8e96ef1`) with zero Rust/JS runtime changes. Both CI runs
+(`45931016494` on `main`, `45931018234` on `v0.1.0`) passed. After rotating `NPM_TOKEN`
+(Read & Write on All packages + Bypass 2FA), `Release` rerun `45931018317` passed all
+jobs (`publish` skipped the 4 live `0.1.0` packages and published both
+`kh-lang-win32-x64-msvc@0.1.0` and root `kh-lang@0.1.0` with Sigstore provenance).
+Live npm status immediately after publish:
+- `kh-lang-darwin-arm64`, `kh-lang-darwin-x64`, `kh-lang-linux-arm64-gnu`, `kh-lang-linux-x64-gnu`: `0.1.0` (live)
+- `kh-lang-win32-x64-msvc`: `0.0.1-security` in `npm view` right after publish (npm processing or staged; approve in Staged Packages if shown)
+- `kh-lang`: `0.0.0-stage` (awaiting 2FA approval in npmjs.com → Staged Packages)
+Next: approve staged `0.1.0` package(s) on npmjs.com, configure npm Trusted Publishing (OIDC) for `release.yml`, and run `T8` (`v0.1.1`) in a fresh Delikit session.
