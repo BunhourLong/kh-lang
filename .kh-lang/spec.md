@@ -27,7 +27,17 @@ wasi target added later via napi.targets), no Thai/Lao support.
    works from a clean clone (`napi build && node test/index.spec.mjs`).
 8. Repo pushed to BunhourLong/kh-lang with split conventional commits and Delikit workflow.
 
-## v0.1.1 hardening & correctness targets
-1. Supply-chain hardened GitHub Actions: SHA-pinned third-party and first-party actions, `permissions: {}` default with least-privilege job scopes, `persist-credentials: false` on checkouts, `--ignore-scripts` on installs/publishes, release verification and binary-presence checks, Dependabot updates, and pinned dictionary source commit.
-2. Complete Khmer combining-mark cluster handling (`U+17C9..=U+17D1`, `U+17D3`, `U+17DD` bound to the preceding base so OOV segmentation and `insert_zwsp` never split a diacritic from its consonant).
-3. Strict plain-object validation for JS `dictionary` / `addWords` inputs (reject non-plain objects such as `Date`, `Map`, `RegExp`, or `Uint8Array` with `ERR_KH_OPTIONS` / `ERR_KH_WORDS`).
+## Milestone roadmap (post-v0.1.0)
+- **v0.1.1 — Khmer correctness & JS input hardening:**
+  1. Supply-chain hardened GitHub Actions (SHA-pinned actions, `permissions: {}` default, `persist-credentials: false`, `--ignore-scripts`, release verify & `.node` presence checks, Dependabot, pinned dictionary source commit — already landed on `main`).
+  2. Complete Khmer combining-mark cluster handling (`U+17C9..=U+17D1`, `U+17D3`, `U+17DD`), contiguous Khmer digit grouping (`U+17E0..=U+17E9`), and closing-punctuation protection in `insert_zwsp`.
+  3. Strict plain-object validation for JS `options` / `dictionary` / `addWords` inputs and explicit `addWords` identity semantics.
+- **v0.2.0 — Performance & binary size:**
+  1. Custom-word overlay over `&'static Dictionary` (no 33,895-entry clone) and zero-dep prefix-pruned dictionary lookup.
+  2. `[profile.release]` (`lto`, `codegen-units = 1`, `strip = "symbols"`) plus reproducible JS + Rust benchmarks.
+- **v0.3.0 — Platform reach, ecosystem & cohesive APIs:**
+  1. Add Linux `musl` (`x64`/`arm64`), Windows `arm64`, and `wasm32-wasi` targets.
+  2. Prepare `kh-lang-core` for crates.io, add `package.json` `"exports"`, and expose `clusters`, Khmer/ASCII digit helpers, and `splitSentences`.
+- **v0.4.0 — Real-world corpus, OSS governance & OIDC release:**
+  1. Curated real-world Khmer test corpus and clean dictionary supplement layer.
+  2. `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, GitHub Releases automation, Node 24-ready SHA-pinned actions, npm Trusted Publishing (OIDC), and GitHub branch/tag rulesets.

@@ -62,14 +62,74 @@ Verify: `cargo clippy && cargo build -p kh-lang && npx napi build --platform && 
 →napi build matrix→jest-free npm test), .npmignore, npm pack dry-run check.
 Verify: `npm test` green from clean clone.
 
-## T7 review+publish — in progress (v0.1.0 completion)
+## T7 review+publish — DONE (v0.1.0 live on npm)
 Reviewer subagent on whole diff; fix loop; split conventional commits; push to
 BunhourLong/kh-lang (origin). No co-author.
-T7a: Delikit refresh (`.claude/run-task.md`, `AGENTS.md`, remove legacy runners), GitHub Actions & supply-chain hardening, and complete `v0.1.0` npm publish (without changing Rust/JS runtime binaries).
+T7a: Delikit refresh (`.claude/run-task.md`, `AGENTS.md`, remove legacy runners), GitHub Actions & supply-chain hardening, and complete `v0.1.0` npm publish (all 6 packages live on npm at `0.1.0`).
 
-## T8 cluster-marks-and-js-validation — next (v0.1.1)
-Allowed files: `crates/kh-lang-core/src/cluster.rs`, `crates/kh-lang-core/src/segmenter.rs`, `src/index.rs`, `test/segment.test.mjs`, `test/api.test.mjs` (plus version bump across `Cargo.toml`, `crates/kh-lang-core/Cargo.toml`, `package.json`, `npm/*/package.json`, `index.js` when releasing `v0.1.1`).
-1. Extend `is_khmer_mark` in `crates/kh-lang-core/src/cluster.rs` to cover `U+17B6..=U+17D1`, `U+17D3`, `U+17DD` (and evaluate `U+17B4..=U+17B5` vowel inherent marks); add regression tests for OOV diacritics (`គ់`, `គ៉ា`, `គ៍`, `ក័ង`) in Rust and Node (`segment` and `insertZwsp` must keep marks attached to the base consonant and never insert ZWSP before a combining mark); verify `test/gold-100.test.mjs` boundary F1 stays green.
-2. Reject non-plain JS objects (`new Date()`, `new Map()`, `/regex/`, `Buffer.from('x')`, `new Uint8Array()`) passed as `options`, `dictionary`, or `addWords` with `ERR_KH_OPTIONS` / `ERR_KH_WORDS` while preserving `Object.create(null)` and plain `{}` literals; add Node regression tests in `test/api.test.mjs`.
-Verification: `export PATH="$HOME/.cargo/bin:$PATH" && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && npm test && npx tsc --noEmit`
+---
+
+## Milestone v0.1.1 — Khmer correctness & JS input hardening
+
+### T8 v0.1.1-core-correctness — next
+Allowed files: `crates/kh-lang-core/src/{cluster,run,segmenter}.rs`, `test/segment.test.mjs`, `test/gold-100.test.mjs` (read-only verification unless invariant changes).
+1. Extend `is_khmer_mark` in `crates/kh-lang-core/src/cluster.rs` to cover `U+17B6..=U+17D1`, `U+17D3`, and `U+17DD` (and evaluate `U+17B4..=U+17B5`), keeping OOV diacritics (`គ់`, `គ៉ា`, `គ៍`, `ក័ង`) bound to their base consonants.
+2. Group contiguous Khmer digits (`U+17E0..=U+17E9`) into a single token (e.g., `ឆ្នាំ២០២៦` → `["ឆ្នាំ", "២០២៦"]`, `តម្លៃ១០០០៛` → `["តម្លៃ", "១០០០", "៛"]`), preserving exact losslessness and UTF-16 offsets.
+3. Suppress `insert_zwsp` before Khmer closing punctuation/signs (`។` `U+17D4`, `៕` `U+17D5`, `៖` `U+17D6`, `ៗ` `U+17D7`, `៚` `U+17DA`, `៛` `U+17DB`) so browsers/editors never orphan punctuation onto a new line.
+4. Add regression tests in Rust and `test/segment.test.mjs`; verify `test/gold-100.test.mjs` boundary F1 stays green (`viterbi >= bimm`).
+
+### T9 v0.1.1-js-validation-and-release
+Allowed files: `src/index.rs`, `test/api.test.mjs`, `README.md`, and version bump files (`Cargo.toml`, `crates/kh-lang-core/Cargo.toml`, `package.json`, `npm/*/package.json`, `index.js`) when releasing `v0.1.1`.
+1. Reject non-plain JS objects (`new Date()`, `new Map()`, `/regex/`, `Buffer.from('x')`, `new Uint8Array()`) passed as `options`, `dictionary`, or `addWords` with `ERR_KH_OPTIONS` / `ERR_KH_WORDS` (keep plain `{}` literals and `Object.create(null)` accepted).
+2. Clarify or fix `Segmenter#addWords` chaining identity semantics (`this` return vs documented copy behavior) with regression tests in `test/api.test.mjs` and README docs.
+3. Run fresh-context high-risk review + branch `security-audit`, commit, tag, and publish `v0.1.1`.
+
+---
+
+## Milestone v0.2.0 — Performance & binary size
+
+### T10 v0.2.0-dictionary-overlay-and-prefix-lookup
+Allowed files: `crates/kh-lang-core/src/{dictionary,matcher,segmenter}.rs`, `src/index.rs`, `test/*.test.mjs`.
+1. Replace the 33,895-entry `Dictionary` deep-clone on custom words (`new Segmenter({ dictionary })` / `.addWords()`) with a lightweight overlay over `&'static Dictionary`.
+2. Add zero-dependency prefix-pruned dictionary lookup so `bimm` and `viterbi` stop scanning as soon as no dictionary word shares the prefix; preserve determinism, losslessness, and `test/gold-100.test.mjs` F1.
+
+### T11 v0.2.0-release-profile-and-benchmarks
+Allowed files: `Cargo.toml`, `bench/*` (new), `README.md`, and version bump files for `v0.2.0`.
+1. Add `[profile.release]` (`lto = true`, `codegen-units = 1`, `strip = "symbols"`) in root `Cargo.toml` and verify `.node` binary size reduction.
+2. Add reproducible zero-dependency JS + Rust throughput/instantiation benchmarks (`bench/bench.mjs`) and document benchmark numbers in `README.md`.
+3. Run fresh-context high-risk review + branch `security-audit`, commit, tag, and publish `v0.2.0`.
+
+---
+
+## Milestone v0.3.0 — Platform reach, ecosystem & cohesive APIs
+
+### T12 v0.3.0-musl-win-arm64-and-wasm
+Allowed files: `package.json`, `npm/*`, `.github/workflows/{ci,release}.yml`, `index.js`, `index.d.ts`, `README.md`.
+1. Add Linux musl (`x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`), Windows ARM64 (`aarch64-pc-windows-msvc`), and WASM/edge fallback (`wasm32-wasi`) targets with CI/release builds and smoke tests.
+
+### T13 v0.3.0-crates-io-and-js-api
+Allowed files: `crates/kh-lang-core/{Cargo.toml,README.md,src/*}`, `src/index.rs`, `package.json`, `index.d.ts`, `test/*.test.mjs`, `README.md`, and version bump files for `v0.3.0`.
+1. Prepare `kh-lang-core` metadata and crate README for publishing on crates.io (`repository`, `homepage`, `readme`, `keywords`, `categories`).
+2. Add an explicit `"exports"` map to `package.json` for strict ESM/CJS/`NodeNext` TypeScript resolution.
+3. Expose cohesive Rust + JS APIs: `clusters(text)` (grapheme-safe Khmer clusters), `khmerDigitsToAscii` / `asciiDigitsToKhmer`, and `splitSentences(text)` (`។`/`៕` + standard punctuation), with full Rust + Node + TypeScript tests.
+4. Run fresh-context high-risk review + branch `security-audit`, commit, tag, and publish `v0.3.0`.
+
+---
+
+## Milestone v0.4.0 — Real-world corpus, OSS governance & OIDC release
+
+### T14 v0.4.0-real-world-corpus-and-dict
+Allowed files: `test/fixtures/real-khmer.mjs` (new), `test/real-khmer.test.mjs` (new), `scripts/build-dict.mjs`, `data/*`, `README.md`.
+1. Add a curated real-world Khmer evaluation fixture (news, colloquial text, modern tech/loanwords, dates/prices, abbreviations) and a clean dictionary supplement layer separated from upstream SIL `khmerlbdict`.
+
+### T15 v0.4.0-oss-governance-and-oidc
+Allowed files: `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, `README.md`, `.github/workflows/{ci,release}.yml`.
+1. Add `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md`, README status badges (npm, CI, license, SLSA provenance), and an isolated `github-release` job (`permissions: { contents: write }` on that job only) in `release.yml`.
+2. Upgrade SHA-pinned GitHub Actions off deprecated Node 20 runtime majors.
+3. Migrate `release.yml` to npm Trusted Publishing (OIDC) once enabled on npmjs.com (removing static `NPM_TOKEN`), and enable/document GitHub repo protections (`main` branch ruleset, `v*` tag ruleset, Dependabot security alerts).
+
+---
+
+Verification (all tasks):
+`export PATH="$HOME/.cargo/bin:$PATH" && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && npm test && npx tsc --noEmit`
 -- STATE.md tracks status per task.

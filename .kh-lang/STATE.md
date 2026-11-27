@@ -8,7 +8,14 @@
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
 | T7 review+publish | done (all 6 pkgs live on npm @0.1.0; clean install verified) | 8e96ef1 | — |
-| T8 cluster-marks-and-js-validation | todo | — | queued for v0.1.1 after v0.1.0 release |
+| T8 v0.1.1-core-correctness | todo | — | next task for v0.1.1 |
+| T9 v0.1.1-js-validation-and-release | todo | — | blocked on T8 |
+| T10 v0.2.0-dictionary-overlay-and-prefix-lookup | todo | — | queued for v0.2.0 (after v0.1.1) |
+| T11 v0.2.0-release-profile-and-benchmarks | todo | — | blocked on T10 |
+| T12 v0.3.0-musl-win-arm64-and-wasm | todo | — | queued for v0.3.0 (after v0.2.0) |
+| T13 v0.3.0-crates-io-and-js-api | todo | — | blocked on T12 |
+| T14 v0.4.0-real-world-corpus-and-dict | todo | — | queued for v0.4.0 (after v0.3.0) |
+| T15 v0.4.0-oss-governance-and-oidc | todo | — | blocked on T14 |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
 losslessness checks on Khmer, mixed Latin/digits/emoji, and ZWSP inputs passed.

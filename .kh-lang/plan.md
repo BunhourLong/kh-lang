@@ -35,5 +35,12 @@
 - T4: crates/kh-lang-core/src/segmenter.rs, lib.rs mod lines
 - T5: Cargo.toml (root), src/index.rs, package.json, index.js, tsconfig.json
 - T6: test/index.test.mjs, .github/workflows/ci.yml, README.md
-- T8 (v0.1.1): crates/kh-lang-core/src/cluster.rs, crates/kh-lang-core/src/segmenter.rs, src/index.rs, test/segment.test.mjs, test/api.test.mjs
-T2–T6 ran sequentially; T8 overlaps segmenter.rs and src/index.rs and runs only after T7 (v0.1.0) completes.
+- T8 (v0.1.1): crates/kh-lang-core/src/{cluster,run,segmenter}.rs, test/segment.test.mjs
+- T9 (v0.1.1): src/index.rs, test/api.test.mjs, README.md, version bump files
+- T10 (v0.2.0): crates/kh-lang-core/src/{dictionary,matcher,segmenter}.rs, src/index.rs, test/*.test.mjs
+- T11 (v0.2.0): Cargo.toml, bench/*, README.md, version bump files
+- T12 (v0.3.0): package.json, npm/*, .github/workflows/{ci,release}.yml, index.js, index.d.ts, README.md
+- T13 (v0.3.0): crates/kh-lang-core/{Cargo.toml,README.md,src/*}, src/index.rs, package.json, index.d.ts, test/*.test.mjs, README.md, version bump files
+- T14 (v0.4.0): test/fixtures/real-khmer.mjs, test/real-khmer.test.mjs, scripts/build-dict.mjs, data/*, README.md
+- T15 (v0.4.0): CHANGELOG.md, SECURITY.md, CONTRIBUTING.md, README.md, .github/workflows/{ci,release}.yml
+T2–T6 ran sequentially; T8–T15 execute sequentially one task per session across milestones (v0.1.1 → v0.2.0 → v0.3.0 → v0.4.0).
