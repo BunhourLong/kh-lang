@@ -71,7 +71,7 @@ jobs:
       - name: Smoke test
         run: |
           node -e "const {segment}=require('./index.js');const s='\u1781\u17D2\u1789\u17BB\u17C6\u179F\u17D2\u179A\u17B6\u179B\u17CB\u1797\u17D2\u1793\u17B6\u17C6\u1796\u17C1\u1789';const w=segment(s);if(!(s.length>0&&w.length>=1&&w.join('')===s))process.exit(1)"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bindings-${{ matrix.target }}
           path: '*.node'
