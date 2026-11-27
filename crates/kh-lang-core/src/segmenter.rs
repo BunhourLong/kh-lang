@@ -9,10 +9,11 @@
 //!
 //! The pipeline is:
 //!
-//! 1. [`runs`](crate::run::runs) splits the input into Khmer and non-Khmer
-//!    stretches.
+//! 1. [`runs`](crate::run::runs) splits the input into Khmer, Khmer-digit and
+//!    non-Khmer stretches.
 //! 2. Every non-Khmer stretch becomes exactly one [`Token`] (whitespace,
-//!    Latin, digits, emoji, ZWSP, BOM, ...).
+//!    Latin, digits, emoji, ZWSP, BOM, ...), and so does every stretch of
+//!    Khmer digits `U+17E0..=U+17E9`, so a number is never split.
 //! 3. Every Khmer stretch is segmented with [`bimm`] or [`viterbi`] depending
 //!    on the configured [`Mode`].
 //!
@@ -20,10 +21,12 @@
 //! bindings can hand them to JS unchanged.
 
 use std::borrow::Cow;
+use std::ops::Range;
 
+use crate::cluster::is_khmer_mark;
 use crate::dictionary::Dictionary;
 use crate::matcher::{bimm, viterbi};
-use crate::run::{RunKind, runs};
+use crate::run::{RunKind, is_khmer_digit, runs};
 
 /// Segmentation algorithm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -123,8 +126,8 @@ impl Segmenter {
     /// Segments `text` into contiguous, lossless [`Token`]s.
     ///
     /// Non-Khmer stretches (whitespace, punctuation, Latin, digits, emoji,
-    /// ZWSP, BOM, ...) each become one token; Khmer stretches are segmented
-    /// with the configured [`Mode`]. Offsets are UTF-16 code units and are
+    /// ZWSP, BOM, ...) and contiguous Khmer digits each become one token;
+    /// Khmer stretches are segmented with the configured [`Mode`]. Offsets are UTF-16 code units and are
     /// contiguous across the whole output: the first token starts at `0`,
     /// every following token starts where the previous one ended, and the
     /// last token ends at `text.encode_utf16().count()`. These guarantees are
@@ -153,7 +156,7 @@ impl Segmenter {
         for run in runs(text) {
             let run_text = &text[run.byte_range];
             match run.kind {
-                RunKind::Other => {
+                RunKind::Other | RunKind::KhmerDigit => {
                     utf16_offset = push_token(&mut tokens, run_text, utf16_offset);
                 }
                 RunKind::Khmer => {
@@ -171,16 +174,19 @@ impl Segmenter {
     }
 
     /// Segments `text` and inserts U+200B ZWSP between adjacent tokens whose
-    /// touching characters are both Khmer.
+    /// touching characters are both Khmer (letters, signs or Khmer digits).
     ///
     /// Nothing is inserted at the string edges, before or after empty text, or
     /// next to existing ZWSP, whitespace, Latin text or any other non-Khmer
     /// character, because those boundary characters belong to non-Khmer
-    /// tokens. A ZWSP is also never inserted after a coeng (`U+17D2`), which
-    /// binds to the next base character, nor between two Khmer digits
+    /// tokens. A ZWSP is also never inserted after a coeng (`U+17D2`), before
+    /// a coeng or a combining mark, before the closing signs `។ ៕ ៖ ៗ ៚ ៛`
+    /// (token boundaries after them still allow ZWSP), nor between two Khmer digits
     /// (`U+17E0..=U+17E9`), which would split a number. Removing the ZWSP this
     /// call inserted restores `text`; pre-existing U+200B in the input are
-    /// preserved. The call is idempotent.
+    /// preserved. Chunks left joined by a suppressed boundary (or in Viterbi
+    /// mode, where rounding ties can shift without trailing context) are
+    /// re-segmented to a fixed point so the call is strictly idempotent.
     ///
     /// # Examples
     ///
@@ -195,19 +201,72 @@ impl Segmenter {
     /// ```
     #[must_use]
     pub fn insert_zwsp(&self, text: &str) -> String {
-        let tokens = self.segment(text);
         let mut out = String::with_capacity(text.len());
-        let mut previous: Option<&Token> = None;
-        for token in &tokens {
-            if let Some(previous) = previous
-                && zwsp_allowed(&previous.text, &token.text)
-            {
+        let mut previous = "";
+        for run in runs(text) {
+            let Some(run_text) = text.get(run.byte_range) else {
+                continue;
+            };
+            if zwsp_allowed(previous, run_text) {
                 out.push('\u{200B}');
             }
-            out.push_str(&token.text);
-            previous = Some(token);
+            match run.kind {
+                RunKind::Other | RunKind::KhmerDigit => out.push_str(run_text),
+                RunKind::Khmer => self.write_khmer_run_with_zwsp(run_text, &mut out),
+            }
+            previous = run_text;
         }
         out
+    }
+
+    /// Writes one Khmer run to `out` with ZWSP between its words.
+    ///
+    /// Tokens joined by a suppressed boundary form one chunk. Multi-token
+    /// chunks (and any Viterbi chunk, whose floating-point rounding ties can
+    /// shift once trailing context is removed) are re-segmented on their own
+    /// until no chunk splits further, making the call strictly idempotent.
+    /// Every re-queued span is strictly shorter, so this ends.
+    fn write_khmer_run_with_zwsp(&self, run_text: &str, out: &mut String) {
+        let mut stack = vec![(0..run_text.len(), true)];
+        let mut first_piece = true;
+        while let Some((span, needs_split)) = stack.pop() {
+            let Some(slice) = run_text.get(span.clone()) else {
+                continue;
+            };
+            let mut chunks: Vec<(Range<usize>, usize)> = Vec::new();
+            if needs_split {
+                let ranges = match self.mode {
+                    Mode::Bimm => bimm(&self.dictionary, slice),
+                    Mode::Viterbi => viterbi(&self.dictionary, slice),
+                };
+                for range in ranges {
+                    if let Some(last) = chunks.last_mut()
+                        && let (Some(prev), Some(next)) =
+                            (slice.get(last.0.clone()), slice.get(range.clone()))
+                        && !zwsp_allowed(prev, next)
+                    {
+                        last.0.end = range.end;
+                        last.1 += 1;
+                    } else {
+                        chunks.push((range, 1));
+                    }
+                }
+            }
+            if chunks.len() <= 1 {
+                if !first_piece {
+                    out.push('\u{200B}');
+                }
+                out.push_str(slice);
+                first_piece = false;
+                continue;
+            }
+            for (chunk, token_count) in chunks.into_iter().rev() {
+                stack.push((
+                    span.start + chunk.start..span.start + chunk.end,
+                    token_count > 1 || self.mode == Mode::Viterbi,
+                ));
+            }
+        }
     }
 }
 
@@ -230,25 +289,34 @@ fn utf16_len(s: &str) -> u32 {
     u32::try_from(s.encode_utf16().count()).unwrap_or(u32::MAX)
 }
 
-/// Whether `c` is a Khmer digit (`U+17E0..=U+17E9`).
-fn is_khmer_digit(c: char) -> bool {
-    ('\u{17E0}'..='\u{17E9}').contains(&c)
+/// Khmer signs that close the preceding text and take no ZWSP before them:
+/// khan `។`, bariyoosan `៕`, camnuc pii kuuh `៖`, lek too `ៗ`, koomuut `៚` and
+/// the riel sign `៛`.
+fn is_khmer_closing_punct(c: char) -> bool {
+    matches!(
+        c,
+        '\u{17D4}' | '\u{17D5}' | '\u{17D6}' | '\u{17D7}' | '\u{17DA}' | '\u{17DB}'
+    )
 }
 
 /// Whether a ZWSP may be inserted between the adjacent tokens `left` and
 /// `right`.
 ///
-/// The touching characters must both be Khmer. The left character must not be
-/// a coeng (`U+17D2`), which binds to the next base character, and the
-/// boundary must not fall between two Khmer digits, which belong to one
-/// number.
+/// The touching characters must both be Khmer letters, signs or digits. The
+/// left character must not be a coeng (`U+17D2`), which binds to the next base
+/// character; the right character must not be a coeng, a combining mark or a
+/// closing sign (see `is_khmer_closing_punct`); and the boundary must not fall
+/// between two Khmer digits, which belong to one number.
 fn zwsp_allowed(left: &str, right: &str) -> bool {
     let (Some(last), Some(first)) = (left.chars().next_back(), right.chars().next()) else {
         return false;
     };
-    RunKind::of(last) == RunKind::Khmer
-        && RunKind::of(first) == RunKind::Khmer
+    matches!(RunKind::of(last), RunKind::Khmer | RunKind::KhmerDigit)
+        && matches!(RunKind::of(first), RunKind::Khmer | RunKind::KhmerDigit)
         && last != '\u{17D2}'
+        && first != '\u{17D2}'
+        && !is_khmer_mark(first)
+        && !is_khmer_closing_punct(first)
         && !(is_khmer_digit(last) && is_khmer_digit(first))
 }
 
@@ -503,6 +571,92 @@ mod tests {
         // The exclusion is narrow: a digit next to a consonant still gets a
         // separator.
         assert_eq!(segmenter.insert_zwsp("១ក"), "១\u{200B}ក");
+    }
+
+    #[test]
+    fn khmer_digits_and_oov_diacritics_segment_exactly() {
+        let cases: &[(&str, &[&str])] = &[
+            ("ឆ្នាំ២០២៦", &["ឆ្នាំ", "២០២៦"]),
+            ("តម្លៃ១០០០៛", &["តម្លៃ", "១០០០", "៛"]),
+            ("០១២៣៤៥៦៧៨៩", &["០១២៣៤៥៦៧៨៩"]),
+            ("ទី១០", &["ទី", "១០"]),
+            ("គ់", &["គ់"]),
+            ("គ៉ា", &["គ៉ា"]),
+            ("គ៍", &["គ៍"]),
+            ("ក័ង", &["ក័", "ង"]),
+            ("១\u{17D2}ក", &["១", "\u{17D2}ក"]),
+            ("យូររបៀបថៃក្រម៉ា", &["យូរ", "របៀប", "ថៃ", "ក្រ", "ម៉ា"]),
+        ];
+        for mode in [Mode::Bimm, Mode::Viterbi] {
+            let segmenter = Segmenter::builder().mode(mode).build();
+            for &(text, expected) in cases {
+                let tokens = segmenter.segment(text);
+                assert_eq!(token_texts(&tokens), expected, "{text} ({mode:?})");
+                assert_lossless(text, &tokens);
+            }
+        }
+    }
+
+    #[test]
+    fn insert_zwsp_handles_closing_signs_digits_and_marks() {
+        let segmenter = Segmenter::new();
+        let cases = [
+            ("ខ្ញុំស្រលាញ់ភ្នំពេញ។", "ខ្ញុំ\u{200B}ស្រលាញ់\u{200B}ភ្នំពេញ។"),
+            ("តម្លៃ១០០០៛", "តម្លៃ\u{200B}១០០០៛"),
+            ("ខ្ញុំ៕", "ខ្ញុំ៕"),
+            ("ខ្ញុំ៖", "ខ្ញុំ៖"),
+            ("ខ្ញុំៗ", "ខ្ញុំៗ"),
+            ("ខ្ញុំ៚", "ខ្ញុំ៚"),
+            ("ខ្ញុំ។ស្រលាញ់", "ខ្ញុំ។\u{200B}ស្រលាញ់"),
+            ("ឆ្នាំ២០២៦", "ឆ្នាំ\u{200B}២០២៦"),
+            ("១ក", "១\u{200B}ក"),
+            ("១ា", "១ា"),
+            ("១\u{17D2}ក", "១\u{17D2}ក"),
+        ];
+        for (text, expected) in cases {
+            let spaced = segmenter.insert_zwsp(text);
+            assert_eq!(spaced, expected, "{text}");
+            assert_eq!(segmenter.insert_zwsp(&spaced), spaced, "{text} idempotent");
+        }
+        for sign in ["។", "៕", "៖", "ៗ", "៚", "៛"] {
+            assert!(!zwsp_allowed("ខ្ញុំ", sign), "{sign}");
+        }
+        assert!(!zwsp_allowed("១", "២"));
+    }
+
+    #[test]
+    fn insert_zwsp_is_idempotent_when_closing_sign_starts_a_token() {
+        // BIMM picks ["ក", "។ខគ", "ឃងច"]; the suppressed boundary before "។ខគ"
+        // used to leave "ក។ខគ" to be re-split on the next call.
+        let words = ["ក។", "។ខគ", "ខគ", "ខគឃ", "ឃងច"];
+        for mode in [Mode::Bimm, Mode::Viterbi] {
+            for base in [None, Some(Dictionary::new())] {
+                let mut builder = Segmenter::builder().mode(mode).add_words(&words);
+                if let Some(dictionary) = base.clone() {
+                    builder = builder.dictionary(dictionary);
+                }
+                let segmenter = builder.build();
+                let spaced = segmenter.insert_zwsp("ក។ខគឃងច");
+                assert_eq!(spaced, "ក។\u{200B}ខគ\u{200B}ឃងច", "{mode:?} {base:?}");
+                assert!(!spaced.contains("\u{200B}។"));
+                assert_eq!(segmenter.insert_zwsp(&spaced), spaced, "{mode:?} {base:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn insert_zwsp_viterbi_is_idempotent_across_rounding_ties() {
+        // 70*70 / 2450 == 2 exactly, so floating-point rounding can flip the
+        // tie on "ឝឞ" once the trailing OOV cluster "ឣ" is split off.
+        let dict = Dictionary::from_text("ឝ\t70\nឞ\t70\nឝឞ\t2\nឤ\t2308\n");
+        let segmenter = Segmenter::builder()
+            .mode(Mode::Viterbi)
+            .dictionary(dict)
+            .build();
+        let spaced = segmenter.insert_zwsp("ឝឞឣ");
+        assert_eq!(spaced.replace('\u{200B}', ""), "ឝឞឣ");
+        assert!(spaced.ends_with("\u{200B}ឣ"));
+        assert_eq!(segmenter.insert_zwsp(&spaced), spaced);
     }
 
     #[test]

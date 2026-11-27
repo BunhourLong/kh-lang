@@ -1,9 +1,11 @@
 //! Grapheme-safe Khmer cluster iteration.
 //!
 //! Khmer stacks glyphs via the coeng ( subscribed-character) `U+17D2` placed
-//! before a base consonant, followed by combining marks such as dependent
-//! vowels `U+17B6..U+17C5`, nikhahit `U+17C6`, and the register shifts
-//! `U+17C7..U+17C8`. A naive `str::chars()` iterator therefore slices through
+//! before a base consonant, followed by combining marks: inherent vowels
+//! `U+17B4..U+17B5`, dependent vowels `U+17B6..U+17C5`, and the signs
+//! `U+17C6..U+17D1` (nikhahit, reahmuk, register shifts, diacritics such as
+//! bantoc, robat, kakabat, ahsda and viriam), plus bathamasat `U+17D3` and
+//! atthacan `U+17DD`. A naive `str::chars()` iterator therefore slices through
 //! the middle of a rendered glyph, breaking offset math in later matching and
 //! slicing stages.
 //!
@@ -11,8 +13,9 @@
 //!
 //! - a coeng always binds to the character that follows it (their pair is kept
 //!   together), transitively stacking consecutive `coeng + base` pairs;
-//! - Khmer combining marks `U+17B6..U+17C8` attach to the cluster that
-//!   precedes them (or form a lone cluster when nothing precedes);
+//! - Khmer combining marks `U+17B4..U+17D1`, `U+17D3` and `U+17DD` attach to
+//!   the cluster that precedes them (or form a lone cluster when nothing
+//!   precedes);
 //! - every other character — Khmer base characters, Latin letters, digits,
 //!   whitespace, emoji — is its own single-character cluster.
 
@@ -34,10 +37,12 @@ pub struct Cluster<'a> {
 
 const COENG: char = '\u{17D2}';
 
-/// Khmer combining marks: dependent vowels `U+17B6..U+17C5`, nikhahit
-/// `U+17C6`, and the register-shift signs `U+17C7`/`U+17C8`.
-fn is_khmer_mark(c: char) -> bool {
-    ('\u{17B6}'..='\u{17C8}').contains(&c)
+/// Khmer combining marks that attach to the preceding cluster: inherent vowels
+/// `U+17B4..U+17B5`, dependent vowels `U+17B6..U+17C5`, signs `U+17C6..U+17D1`,
+/// bathamasat `U+17D3` and atthacan `U+17DD`. Coeng `U+17D2` is excluded: it
+/// binds forward. `U+17D4..U+17DC` (punctuation, currency) are not marks.
+pub(crate) fn is_khmer_mark(c: char) -> bool {
+    matches!(c, '\u{17B4}'..='\u{17D1}' | '\u{17D3}' | '\u{17DD}')
 }
 
 /// Iterator produced by [`clusters`].
@@ -61,29 +66,23 @@ impl<'a> Iterator for ClusterIter<'a> {
 
     fn next(&mut self) -> Option<Cluster<'a>> {
         let s = self.text;
-        if self.pos >= s.len() {
-            return None;
-        }
         let start = self.pos;
-        let mut end = start + s[start..].chars().next()?.len_utf8();
-        while let Some(c) = s[end..].chars().next() {
-            if is_khmer_mark(c) {
+        let first = s.get(start..)?.chars().next()?;
+        let mut end = start + first.len_utf8();
+        // A coeng belongs to the character that follows it, even at the start
+        // of a cluster, so that character (and any further stack) stays here.
+        let mut after_coeng = first == COENG;
+        while let Some(c) = s.get(end..).and_then(|rest| rest.chars().next()) {
+            if after_coeng || is_khmer_mark(c) || c == COENG {
                 end += c.len_utf8();
-            } else if c == COENG {
-                // A coeng belongs to the base character that follows it; keep
-                // the pair (and, transitively, a following coeng stack) inside
-                // this cluster so it is never split from its strength char.
-                end += c.len_utf8();
-                if let Some(next) = s[end..].chars().next() {
-                    end += next.len_utf8();
-                }
+                after_coeng = c == COENG;
             } else {
                 break;
             }
         }
         self.pos = end;
         Some(Cluster {
-            text: &s[start..end],
+            text: s.get(start..end)?,
             byte_start: start,
             byte_end: end,
         })
@@ -168,6 +167,43 @@ mod tests {
     #[test]
     fn leading_mark_is_own_cluster() {
         assert_eq!(texts("\u{17B6}a"), vec!["\u{17B6}", "a"]);
+    }
+
+    #[test]
+    fn oov_diacritics_bind_to_base() {
+        assert_eq!(texts("គ់"), vec!["គ់"]);
+        assert_eq!(texts("គ៉ា"), vec!["គ៉ា"]);
+        assert_eq!(texts("គ៍"), vec!["គ៍"]);
+        assert_eq!(texts("ក័ង"), vec!["ក័", "ង"]);
+    }
+
+    #[test]
+    fn inherent_vowels_and_extended_signs_bind_to_base() {
+        for mark in [
+            '\u{17B4}', '\u{17B5}', '\u{17CC}', '\u{17CE}', '\u{17CF}', '\u{17D1}', '\u{17D3}',
+            '\u{17DD}',
+        ] {
+            let s = format!("ក{mark}");
+            assert_eq!(texts(&s), vec![s.as_str()]);
+        }
+    }
+
+    #[test]
+    fn punctuation_and_currency_do_not_attach() {
+        for sign in ['។', '៕', '៖', 'ៗ', '៘', '៙', '៚', '៛', 'ៜ'] {
+            let s = format!("ក{sign}");
+            assert_eq!(texts(&s), vec!["ក".to_owned(), sign.to_string()]);
+        }
+    }
+
+    #[test]
+    fn cluster_initial_coeng_binds_forward() {
+        assert_eq!(texts("\u{17D2}ក"), vec!["\u{17D2}ក"]);
+        assert_eq!(texts("\u{17D2}កា"), vec!["\u{17D2}កា"]);
+        assert_eq!(texts("\u{17D2}ក\u{17D2}រា"), vec!["\u{17D2}ក\u{17D2}រា"]);
+        assert_eq!(texts("\u{17D2}\u{17D2}ក"), vec!["\u{17D2}\u{17D2}ក"]);
+        assert_eq!(texts("\u{17D2}កខ"), vec!["\u{17D2}ក", "ខ"]);
+        assert_eq!(texts("\u{17D2}"), vec!["\u{17D2}"]);
     }
 
     #[test]

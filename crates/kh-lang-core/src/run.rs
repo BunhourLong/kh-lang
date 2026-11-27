@@ -5,10 +5,11 @@
 //! keep every other run (whitespace, punctuation, Latin, digits, emoji) as a
 //! single token, which guarantees lossless tokenization.
 //!
-//! Classification considers a character Khmer when it belongs to the Khmer
-//! block `U+1780..U+17FF` (consonants, vowels, digits, signs and Khmer
-//! punctuation), the supplementary Khmer Symbols block `U+19E0..U+19FF`
-//! (lunar dates), or is the zero-width non-joiner `U+200C`, which Khmer
+//! Khmer decimal digits `U+17E0..U+17E9` form their own [`RunKind::KhmerDigit`]
+//! runs so a number stays one token. Otherwise a character is Khmer when it
+//! belongs to the Khmer block `U+1780..U+17FF` (consonants, vowels, signs,
+//! Khmer punctuation and currency), the supplementary Khmer Symbols block
+//! `U+19E0..U+19FF` (lunar dates), or is the zero-width non-joiner `U+200C`, which Khmer
 //! spelling uses to prevent ligatures and which must not be orphaned into a
 //! non-Khmer token. `U+200B` (ZWSP) is intentionally *not* Khmer and not
 //! special-cased here — callers strip it with
@@ -19,10 +20,12 @@ use std::ops::Range;
 /// The script class of a [`Run`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunKind {
-    /// Khmer script: `U+1780..U+17FF`, Khmer symbols `U+19E0..U+19FF`, and
-    /// the zero-width non-joiner `U+200C`.
+    /// Khmer script: `U+1780..U+17FF` except the digits, Khmer symbols
+    /// `U+19E0..U+19FF`, and the zero-width non-joiner `U+200C`.
     Khmer,
-    /// Anything else: whitespace, punctuation, Latin letters, digits, emoji,
+    /// Khmer decimal digits `U+17E0..U+17E9`.
+    KhmerDigit,
+    /// Anything else: whitespace, punctuation, Latin letters, ASCII digits, emoji,
     /// other scripts.
     Other,
 }
@@ -31,7 +34,9 @@ impl RunKind {
     /// Classifies a single character.
     #[must_use]
     pub fn of(c: char) -> Self {
-        if ('\u{1780}'..='\u{17FF}').contains(&c)
+        if is_khmer_digit(c) {
+            Self::KhmerDigit
+        } else if ('\u{1780}'..='\u{17FF}').contains(&c)
             || ('\u{19E0}'..='\u{19FF}').contains(&c)
             || c == '\u{200C}'
         {
@@ -40,6 +45,11 @@ impl RunKind {
             Self::Other
         }
     }
+}
+
+/// Whether `c` is a Khmer decimal digit (`U+17E0..=U+17E9`).
+pub(crate) fn is_khmer_digit(c: char) -> bool {
+    ('\u{17E0}'..='\u{17E9}').contains(&c)
 }
 
 /// A maximal contiguous stretch of characters sharing one [`RunKind`].
@@ -159,6 +169,30 @@ mod tests {
         assert_eq!(out[0].byte_range, 0..6);
         assert_eq!(out[1].byte_range, 6..7);
         assert_eq!(out[2].byte_range, 7..10);
+    }
+
+    fn kinds_and_texts(s: &str) -> Vec<(RunKind, &str)> {
+        runs(s)
+            .into_iter()
+            .map(|r| (r.kind, &s[r.byte_range]))
+            .collect()
+    }
+
+    #[test]
+    fn khmer_digits_form_their_own_runs() {
+        use RunKind::{Khmer, KhmerDigit, Other};
+        assert_eq!(
+            kinds_and_texts("ឆ្នាំ២០២៦"),
+            vec![(Khmer, "ឆ្នាំ"), (KhmerDigit, "២០២៦")]
+        );
+        assert_eq!(
+            kinds_and_texts("តម្លៃ១០០០៛"),
+            vec![(Khmer, "តម្លៃ"), (KhmerDigit, "១០០០"), (Khmer, "៛")]
+        );
+        assert_eq!(
+            kinds_and_texts("២០២៦ abc"),
+            vec![(KhmerDigit, "២០២៦"), (Other, " abc")]
+        );
     }
 
     #[test]

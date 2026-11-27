@@ -172,3 +172,66 @@ test('insertZwsp only inserts between Khmer letters and skips coeng tails', () =
   assert.ok(!/\u17D2\u200B/u.test(segmenter.insertZwsp('ខ្ញុំក\u17D2ខ្ញុំ')))
   assert.equal(segmenter.insertZwsp('១២៣'), '១២៣')
 })
+
+test('OOV diacritics and Khmer digits segment exactly with exact offsets', () => {
+  const cases = [
+    ['គ់', ['គ់']],
+    ['គ៉ា', ['គ៉ា']],
+    ['គ៍', ['គ៍']],
+    ['ក័ង', ['ក័', 'ង']],
+    ['ឆ្នាំ២០២៦', ['ឆ្នាំ', '២០២៦']],
+    ['តម្លៃ១០០០៛', ['តម្លៃ', '១០០០', '៛']],
+    ['០១២៣៤៥៦៧៨៩', ['០១២៣៤៥៦៧៨៩']],
+    ['ទី១០', ['ទី', '១០']],
+    ['១\u17D2ក', ['១', '\u17D2ក']],
+    ['យូររបៀបថៃក្រម៉ា', ['យូរ', 'របៀប', 'ថៃ', 'ក្រ', 'ម៉ា']],
+  ]
+  for (const mode of MODES) {
+    const segmenter = new Segmenter({ mode })
+    for (const [text, expected] of cases) {
+      const tokens = segmenter.segment(text)
+      assert.deepEqual(tokenTexts(tokens), expected, `${text} (${mode})`)
+      assertTokenInvariants(text, tokens)
+    }
+  }
+})
+
+test('insertZwsp skips closing signs but separates words and Khmer digits', () => {
+  const segmenter = new Segmenter()
+  const cases = [
+    ['ខ្ញុំស្រលាញ់ភ្នំពេញ។', `ខ្ញុំ${ZWSP}ស្រលាញ់${ZWSP}ភ្នំពេញ។`],
+    ['តម្លៃ១០០០៛', `តម្លៃ${ZWSP}១០០០៛`],
+    ['ខ្ញុំ៕', 'ខ្ញុំ៕'],
+    ['ខ្ញុំ៖', 'ខ្ញុំ៖'],
+    ['ខ្ញុំៗ', 'ខ្ញុំៗ'],
+    ['ខ្ញុំ៚', 'ខ្ញុំ៚'],
+    ['ខ្ញុំ៛', 'ខ្ញុំ៛'],
+    ['ខ្ញុំ។ស្រលាញ់', `ខ្ញុំ។${ZWSP}ស្រលាញ់`],
+    ['ឆ្នាំ២០២៦', `ឆ្នាំ${ZWSP}២០២៦`],
+  ]
+  for (const [text, expected] of cases) {
+    const output = segmenter.insertZwsp(text)
+    assert.equal(output, expected, text)
+    assert.equal(segmenter.insertZwsp(output), output, `${text} idempotent`)
+  }
+})
+
+test('insertZwsp is idempotent when a closing sign starts a dictionary word', () => {
+  for (const mode of MODES) {
+    const segmenter = new Segmenter({ mode, dictionary: ['ក។', '។ខគ', 'ខគ', 'ខគឃ', 'ឃងច'] })
+    const once = segmenter.insertZwsp('ក។ខគឃងច')
+    assert.equal(once, `ក។${ZWSP}ខគ${ZWSP}ឃងច`, mode)
+    assert.equal(segmenter.insertZwsp(once), once, `${mode} idempotent`)
+  }
+})
+
+test('insertZwsp is idempotent in viterbi across floating-point ties', () => {
+  const segmenter = new Segmenter({
+    mode: 'viterbi',
+    dictionary: { ឝ: 855080, ឞ: 855080, ឝឞ: 85508, ឤ: 10988 },
+  })
+  const once = segmenter.insertZwsp('ឝឞឣ')
+  assert.equal(stripZwsp(once), 'ឝឞឣ')
+  assert.ok(once.endsWith(`${ZWSP}ឣ`))
+  assert.equal(segmenter.insertZwsp(once), once)
+})

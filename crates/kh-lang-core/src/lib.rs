@@ -7,9 +7,9 @@
 //!   analysis.
 //! - [`cluster`] — grapheme-safe Khmer cluster iteration ([`ClusterIter`],
 //!   [`Cluster`]) so segmentation never splits inside stacked glyphs.
-//! - [`run`] — script classification into `[Khmer][run::RunKind::Khmer] /
-//!   [Other][run::RunKind::Other]` runs ([`runs`]) so algorithms only ever see
-//!   homogeneous scripts.
+//! - [`run`] — script classification into [`Khmer`](run::RunKind::Khmer),
+//!   [`KhmerDigit`](run::RunKind::KhmerDigit) and [`Other`](run::RunKind::Other)
+//!   runs ([`runs`]) so algorithms only ever see homogeneous scripts.
 //! - [`dictionary`] — the frequency-annotated word list ([`Dictionary`]),
 //!   including the embedded SIL data.
 //! - [`matcher`] — cluster-aligned matching over that dictionary with
