@@ -8,8 +8,8 @@
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
 | T7 review+publish | done (all 6 pkgs live on npm @0.1.0; clean install verified) | 8e96ef1 | — |
-| T8 v0.1.1-core-correctness | todo | — | next task for v0.1.1 |
-| T9 v0.1.1-js-validation-and-release | todo | — | blocked on T8 |
+| T8 v0.1.1-core-correctness | done | 4aba07c | — |
+| T9 v0.1.1-js-validation-and-release | todo | — | next task for v0.1.1 |
 | T10 v0.2.0-dictionary-overlay-and-prefix-lookup | todo | — | queued for v0.2.0 (after v0.1.1) |
 | T11 v0.2.0-release-profile-and-benchmarks | todo | — | blocked on T10 |
 | T12 v0.3.0-musl-win-arm64-and-wasm | todo | — | queued for v0.3.0 (after v0.2.0) |
@@ -65,4 +65,5 @@ jobs (`publish` skipped the 4 live `0.1.0` packages and published both
 Live npm status verified:
 - All 6 packages (`kh-lang`, `kh-lang-darwin-arm64`, `kh-lang-darwin-x64`, `kh-lang-linux-arm64-gnu`, `kh-lang-linux-x64-gnu`, `kh-lang-win32-x64-msvc`) are live at `0.1.0` (with SLSA provenance on `kh-lang` and `kh-lang-win32-x64-msvc`).
 - End-to-end clean `npm install kh-lang` verified via Haiku in an isolated temp dir under both CommonJS and ESM (`segment` in `bimm`/`viterbi`, `Segmenter.segment`/`.split` UTF-16 offsets, `insertZwsp`, `addWords`, `normalize`, `ERR_KH_OPTIONS`/`ERR_KH_WORDS`).
-Next: configure npm Trusted Publishing (OIDC) for `release.yml` (optional), and run `T8` (`v0.1.1`) in a fresh Delikit session.
+Verified at T8 (`4aba07c`): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (59 unit + 9 doctests), `npm test` (31/31; `gold-100`: 25 mode disagreements, BIMM F1 `0.9434`, Viterbi F1 `0.9845`, byte-identical `generate-gold.mjs`), and `npx tsc --noEmit` all pass. Implemented by Opus 5.5 (`claudeAgent_2`); fresh reviews by Codex GPT-6.2 Sol (`codex`) through 2 repair rounds (fixed-point `insert_zwsp` idempotency choice recorded in `decisions.md`).
+Next: run `T9` (`v0.1.1-js-validation-and-release`) in a fresh Delikit session (plus optional npm Trusted Publishing OIDC setup for `release.yml`).
