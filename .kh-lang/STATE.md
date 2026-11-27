@@ -7,7 +7,7 @@
 | T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
-| T7 review+publish | v0.1.0 ready to rerun (win32 spam block cleared; CI/release hardened, Delikit refreshed) | 2cf041a | finish v0.1.0 release & approve staged root `kh-lang` |
+| T7 review+publish | v0.1.0 verified & built; publish blocked on NPM_TOKEN (4/5 platform pkgs live) | 8e96ef1 | rotate NPM_TOKEN (Read & Write All packages + Bypass 2FA) & rerun 45931018317 |
 | T8 cluster-marks-and-js-validation | todo | — | queued for v0.1.1 after v0.1.0 release |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
@@ -49,9 +49,14 @@ in the loop). Impl glm-5.3-flash PASS, reviewer deepseek-v4.1-flash PASS. Commit
 v0.1.0 tag force-moved to it; new run 43017693366. Context windows on opencode-go for both
 glm-5.3-flash and deepseek-v4.1-flash are 1M tokens — no subagent context cap needed.
 2026-11-27 update: npm support cleared `kh-lang-win32-x64-msvc` (transferred to
-`bunhourlong`, currently holding `0.0.1-security`; `0.1.0` returns 404). Workflow refreshed
-to Delikit (`.claude/run-task.md`) and `.github/workflows/{ci,release}.yml` hardened with
-zero Rust/JS runtime changes. Next: move tag `v0.1.0` to the hardened release commit and
-push so `Release` runs fresh `verify` + 5-target `build`, skips the 4 live `0.1.0`
-packages, and publishes `kh-lang-win32-x64-msvc@0.1.0` then root `kh-lang@0.1.0` (if
-staged at `0.0.0-stage`, approve Windows first, then root `kh-lang` with 2FA on npmjs.com).
+`bunhourlong`, currently holding `0.0.1-security`; `0.1.0` returns 404). Refreshed
+orchestration to Delikit (`.claude/run-task.md`, `ac19ad7`), hardened CI/Release
+workflows + Dependabot + `fetch-dict.sh` (`edd270a`), and queued T8 for `v0.1.1`
+(`8e96ef1`) with zero Rust/JS runtime changes. Both CI runs (`45931016494` on `main`,
+`45931018234` on `v0.1.0`) passed. Release `45931018317` passed `check-version`,
+`verify`, and all 5 native `build` jobs, skipped the 4 live `0.1.0` packages, and failed
+in `publish` on `kh-lang-win32-x64-msvc@0.1.0` with `E404 Not Found` on `PUT` due to
+expired/unscoped `NPM_TOKEN` (created `2026-11-06`). Next:
+1. Rotate `NPM_TOKEN` (Granular Access Token with Read & Write on All packages + Bypass 2FA): `gh secret set NPM_TOKEN`
+2. Rerun failed publish job: `gh run rerun 45931018317 --failed`
+3. Approve staged `0.0.0-stage` `kh-lang` (and `win32` if staged) with 2FA on npmjs.com, then switch to npm Trusted Publishing (OIDC) and run `T8` in a fresh Delikit session.
