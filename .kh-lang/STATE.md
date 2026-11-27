@@ -7,7 +7,7 @@
 | T4 core-segmenter | done | 1ce81e1 | — |
 | T5 napi-glue | done | 69fc69c | — |
 | T6 tests+ci+docs | done | 68dbb73 | — |
-| T7 review+publish | v0.1.0 published (Release 45931018317 green; 4/5 live, kh-lang staged 0.0.0-stage, win32 processing/staged) | 8e96ef1 | approve staged packages with 2FA on npmjs.com (win32 if staged, then root kh-lang) |
+| T7 review+publish | done (all 6 pkgs live on npm @0.1.0; clean install verified) | 8e96ef1 | — |
 | T8 cluster-marks-and-js-validation | todo | — | queued for v0.1.1 after v0.1.0 release |
 
 Verified at T4: 50 unit + 9 doctests green; fmt/clippy clean; independent tester
@@ -55,8 +55,7 @@ queued for `v0.1.1` (`8e96ef1`) with zero Rust/JS runtime changes. Both CI runs
 (Read & Write on All packages + Bypass 2FA), `Release` rerun `45931018317` passed all
 jobs (`publish` skipped the 4 live `0.1.0` packages and published both
 `kh-lang-win32-x64-msvc@0.1.0` and root `kh-lang@0.1.0` with Sigstore provenance).
-Live npm status immediately after publish:
-- `kh-lang-darwin-arm64`, `kh-lang-darwin-x64`, `kh-lang-linux-arm64-gnu`, `kh-lang-linux-x64-gnu`: `0.1.0` (live)
-- `kh-lang-win32-x64-msvc`: `0.0.1-security` in `npm view` right after publish (npm processing or staged; approve in Staged Packages if shown)
-- `kh-lang`: `0.0.0-stage` (awaiting 2FA approval in npmjs.com → Staged Packages)
-Next: approve staged `0.1.0` package(s) on npmjs.com, configure npm Trusted Publishing (OIDC) for `release.yml`, and run `T8` (`v0.1.1`) in a fresh Delikit session.
+Live npm status verified:
+- All 6 packages (`kh-lang`, `kh-lang-darwin-arm64`, `kh-lang-darwin-x64`, `kh-lang-linux-arm64-gnu`, `kh-lang-linux-x64-gnu`, `kh-lang-win32-x64-msvc`) are live at `0.1.0` (with SLSA provenance on `kh-lang` and `kh-lang-win32-x64-msvc`).
+- End-to-end clean `npm install kh-lang` verified via Haiku in an isolated temp dir under both CommonJS and ESM (`segment` in `bimm`/`viterbi`, `Segmenter.segment`/`.split` UTF-16 offsets, `insertZwsp`, `addWords`, `normalize`, `ERR_KH_OPTIONS`/`ERR_KH_WORDS`).
+Next: configure npm Trusted Publishing (OIDC) for `release.yml` (optional), and run `T8` (`v0.1.1`) in a fresh Delikit session.
