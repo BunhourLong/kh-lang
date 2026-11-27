@@ -16,8 +16,11 @@ use std::sync::Arc;
 
 use kh_lang_core::dictionary::DEFAULT_FREQ;
 use kh_lang_core::{Segmenter as CoreSegmenter, Token as CoreToken};
-use napi::Error;
-use napi::bindgen_prelude::{Array, Either, JsObjectValue, Object, Unknown, ValueType};
+use napi::bindgen_prelude::{
+    Array, Either, FnArgs, Function, JsObjectValue, KeyCollectionMode, KeyConversion, KeyFilter,
+    Object, This, Unknown, ValueType,
+};
+use napi::{Env, Error, JsGlobal, JsValue};
 use napi_derive::napi;
 
 /// Stable error status codes exposed as `error.code` in JavaScript.
@@ -127,10 +130,11 @@ impl From<CoreToken> for Token {
 /// returned strings always reproduces `text` exactly.
 #[napi]
 pub fn segment(
+    env: Env,
     text: String,
     #[napi(ts_arg_type = "SegmentOptions | null | undefined")] options: Option<Unknown<'_>>,
 ) -> Result<Vec<String>> {
-    let mode = parse_segment_options(options)?;
+    let mode = parse_segment_options(&env, options)?;
     let segmenter = CoreSegmenter::builder().mode(mode).build();
     Ok(segmenter
         .segment(&text)
@@ -153,7 +157,6 @@ pub fn normalize(text: String) -> String {
 /// Custom words are additive: they layer on top of the embedded dictionary
 /// rather than replacing it.
 #[napi]
-#[derive(Clone)]
 pub struct Segmenter {
     inner: Arc<CoreSegmenter>,
     mode: kh_lang_core::Mode,
@@ -168,9 +171,10 @@ impl Segmenter {
     /// words keep the last frequency supplied.
     #[napi(constructor)]
     pub fn new(
+        env: Env,
         #[napi(ts_arg_type = "SegmenterOptions | null | undefined")] options: Option<Unknown<'_>>,
     ) -> Result<Self> {
-        let (mode, extras) = parse_segmenter_options(options)?;
+        let (mode, extras) = parse_segmenter_options(&env, options)?;
         let inner = Arc::new(build_segmenter(mode, &extras));
         Ok(Self {
             inner,
@@ -212,32 +216,37 @@ impl Segmenter {
         self.inner.insert_zwsp(&text)
     }
 
-    /// Adds custom words and returns this segmenter so calls can chain.
+    /// Adds custom words in place and returns `this` (the same `Segmenter`
+    /// instance) so calls can chain.
     ///
-    /// Accepts an array of words (default frequency) or an object mapping
-    /// words to frequencies. Duplicate words keep the last frequency. The
-    /// receiver is mutated and a cheap copy is returned, so
-    /// `new Segmenter().addWords([...]).segment(...)` works.
-    #[napi]
-    pub fn add_words(
+    /// Accepts an array of words (default frequency) or a plain object mapping
+    /// words to frequencies. Duplicate words keep the last frequency. If
+    /// validation fails, the receiver is left unchanged.
+    #[napi(
+        ts_args_type = "words: string[] | Record<string, number>",
+        ts_return_type = "this"
+    )]
+    pub fn add_words<'env>(
         &mut self,
-        #[napi(ts_arg_type = "string[] | Record<string, number>")] words: Unknown<'_>,
-    ) -> Result<Self> {
-        let parsed = parse_words(words, Status::Words, "words")?;
+        env: Env,
+        this: This<'env>,
+        words: Unknown<'_>,
+    ) -> Result<This<'env>> {
+        let parsed = parse_words(&env, words, Status::Words, "words")?;
         // Validate every addition before touching the receiver.
         let additions = extras_from_words(parsed)?;
         self.extras.extend(additions);
         self.inner = Arc::new(build_segmenter(self.mode, &self.extras));
-        Ok(self.clone())
+        Ok(this)
     }
 }
 
 /// Parses and validates the top-level [`SegmentOptions`].
-fn parse_segment_options(options: Option<Unknown<'_>>) -> Result<kh_lang_core::Mode> {
+fn parse_segment_options(env: &Env, options: Option<Unknown<'_>>) -> Result<kh_lang_core::Mode> {
     let Some(options) = options else {
         return Ok(kh_lang_core::Mode::default());
     };
-    let object = expect_object(options, Status::Options, "options")?;
+    let object = expect_object(env, options, Status::Options, "options")?;
     Ok(parse_mode(&object)?
         .map(kh_lang_core::Mode::from)
         .unwrap_or_default())
@@ -245,16 +254,17 @@ fn parse_segment_options(options: Option<Unknown<'_>>) -> Result<kh_lang_core::M
 
 /// Parses and validates the [`SegmenterOptions`] constructor argument.
 fn parse_segmenter_options(
+    env: &Env,
     options: Option<Unknown<'_>>,
 ) -> Result<(kh_lang_core::Mode, HashMap<String, u32>)> {
     let Some(options) = options else {
         return Ok((kh_lang_core::Mode::default(), HashMap::new()));
     };
-    let object = expect_object(options, Status::Options, "options")?;
+    let object = expect_object(env, options, Status::Options, "options")?;
     let mode = parse_mode(&object)?
         .map(kh_lang_core::Mode::from)
         .unwrap_or_default();
-    let extras = match parse_dictionary(&object)? {
+    let extras = match parse_dictionary(env, &object)? {
         Some(words) => extras_from_words(words)?,
         None => HashMap::new(),
     };
@@ -262,7 +272,12 @@ fn parse_segmenter_options(
 }
 
 /// Converts an [`Unknown`] into an [`Object`], rejecting non-objects.
-fn expect_object<'env>(value: Unknown<'env>, status: Status, label: &str) -> Result<Object<'env>> {
+fn expect_object<'env>(
+    env: &Env,
+    value: Unknown<'env>,
+    status: Status,
+    label: &str,
+) -> Result<Object<'env>> {
     let value_type = value
         .get_type()
         .map_err(|error| Error::new(status, format!("invalid {label}: {error}")))?;
@@ -272,18 +287,271 @@ fn expect_object<'env>(value: Unknown<'env>, status: Status, label: &str) -> Res
             format!("{label} must be an object, got {value_type}"),
         ));
     }
-    // SAFETY: the value is an object. `Array` conversion succeeds only for a
-    // real JavaScript array; options must be a plain object.
-    if unsafe { value.cast::<Array<'_>>() }.is_ok() {
-        return Err(Error::new(
-            status,
-            format!("{label} must be an object, not an array"),
-        ));
-    }
     // SAFETY: `value_type` is `Object`, so the cast is a plain wrapper around
     // the same napi handle; no JavaScript is invoked here.
-    unsafe { value.cast::<Object<'env>>() }
-        .map_err(|error| Error::new(status, format!("invalid {label}: {error}")))
+    let object = unsafe { value.cast::<Object<'env>>() }
+        .map_err(|error| Error::new(status, format!("invalid {label}: {error}")))?;
+    let plain = !object.is_array().map_err(invalid(status, label))?
+        && !is_branded(env, &object).map_err(invalid(status, label))?
+        && has_object_prototype(env, &object).map_err(invalid(status, label))?;
+    if !plain {
+        return Err(Error::new(
+            status,
+            format!("{label} must be a plain object"),
+        ));
+    }
+    Ok(object)
+}
+
+/// Maps a raw napi error onto `status`.
+fn invalid(status: Status, label: &str) -> impl Fn(Error) -> Error<Status> + '_ {
+    move |error| Error::new(status, format!("invalid {label}: {error}"))
+}
+
+/// Brands that `Object.getPrototypeOf` cannot reveal: these survive
+/// `Object.setPrototypeOf(x, null)` and cross-realm transfer.
+const UTIL_TYPES_BRANDS: [&str; 14] = [
+    "isProxy",
+    "isMap",
+    "isSet",
+    "isWeakMap",
+    "isWeakSet",
+    "isRegExp",
+    "isBoxedPrimitive",
+    "isSharedArrayBuffer",
+    "isArgumentsObject",
+    "isModuleNamespaceObject",
+    "isGeneratorObject",
+    "isExternal",
+    "isMapIterator",
+    "isSetIterator",
+];
+
+/// `(constructor, prototype member)` whose built-in getter or method throws
+/// unless its receiver carries that constructor's internal slot. Used when
+/// `util.types` is unavailable.
+const SLOT_BRANDS: [(&str, &str); 11] = [
+    ("Map", "size"),
+    ("Set", "size"),
+    ("WeakMap", "has"),
+    ("WeakSet", "has"),
+    ("RegExp", "dotAll"),
+    ("Number", "valueOf"),
+    ("String", "valueOf"),
+    ("Boolean", "valueOf"),
+    ("Symbol", "valueOf"),
+    ("BigInt", "valueOf"),
+    ("SharedArrayBuffer", "byteLength"),
+];
+
+/// Internal-slot brands `util.types` has no predicate for.
+const EXTRA_SLOT_BRANDS: [(&str, &str); 2] =
+    [("WeakRef", "deref"), ("FinalizationRegistry", "unregister")];
+
+/// Whether `object` is a Proxy, a native-wrapped object (e.g. a `Segmenter`)
+/// or a built-in exotic other than an array, judged from internal slots, so
+/// it holds after `Object.setPrototypeOf` and across realms.
+fn is_branded(env: &Env, object: &Object<'_>) -> napi::Result<bool> {
+    if is_native_wrapped(env, object)
+        || object.is_date()?
+        || object.is_buffer()?
+        || object.is_typedarray()?
+        || object.is_arraybuffer()?
+        || object.is_dataview()?
+        || object.is_promise()?
+        || object.is_error()?
+    {
+        return Ok(true);
+    }
+    let global = env.get_global()?;
+    let fallback = match util_types(&global)? {
+        Some(types) => {
+            for brand in UTIL_TYPES_BRANDS {
+                let check: Function<'_, Unknown<'_>, bool> = types.get_named_property(brand)?;
+                if check.call(object.to_unknown())? {
+                    return Ok(true);
+                }
+            }
+            &[][..]
+        }
+        None => {
+            // A Proxy reports a `null` prototype to N-API but its target's
+            // prototype to `Reflect.getPrototypeOf`.
+            let reflect: Object<'_> = global.get_named_property("Reflect")?;
+            let get_prototype: Function<'_, Unknown<'_>, Unknown<'_>> =
+                reflect.get_named_property("getPrototypeOf")?;
+            if object.get_prototype()?.get_type()? == ValueType::Null
+                && get_prototype.call(object.to_unknown())?.get_type()? != ValueType::Null
+            {
+                return Ok(true);
+            }
+            &SLOT_BRANDS[..]
+        }
+    };
+    for (constructor, member) in fallback.iter().chain(&EXTRA_SLOT_BRANDS) {
+        if has_slot(env, &global, constructor, member, object)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Node's `util.types`, via `process.getBuiltinModule` (Node >= 20.16, 22.3).
+fn util_types<'env>(global: &JsGlobal<'env>) -> napi::Result<Option<Object<'env>>> {
+    let Some(process) = global.get_named_property::<Option<Object<'_>>>("process")? else {
+        return Ok(None);
+    };
+    let Some(get_builtin) = process.get::<Function<'_, &str, Object<'_>>>("getBuiltinModule")?
+    else {
+        return Ok(None);
+    };
+    get_builtin
+        .apply(process, "node:util")?
+        .get_named_property("types")
+        .map(Some)
+}
+
+/// Whether `napi_wrap` attached a native pointer to `object`.
+fn is_native_wrapped(env: &Env, object: &Object<'_>) -> bool {
+    let mut wrapped = std::ptr::null_mut();
+    // SAFETY: `napi_unwrap` only reports whether a native pointer is attached
+    // and never throws; `wrapped` is never dereferenced.
+    let status = unsafe { napi::sys::napi_unwrap(env.raw(), object.raw(), &mut wrapped) };
+    status == napi::sys::Status::napi_ok
+}
+
+/// Whether calling `globalThis[constructor].prototype[member]` (its getter for
+/// accessors) on `object` succeeds, i.e. `object` has that internal slot.
+///
+/// A missing constructor counts as no slot. The expected `TypeError` is
+/// cleared so it never leaks into later N-API calls.
+fn has_slot(
+    env: &Env,
+    global: &JsGlobal<'_>,
+    constructor: &str,
+    member: &str,
+    object: &Object<'_>,
+) -> napi::Result<bool> {
+    let constructor = global.get_named_property::<Unknown<'_>>(constructor)?;
+    if constructor.get_type()? != ValueType::Function {
+        return Ok(false);
+    }
+    let reflect: Object<'_> = global.get_named_property("Reflect")?;
+    let get: Function<'_, FnArgs<(Unknown<'_>, &str)>, Unknown<'_>> =
+        reflect.get_named_property("get")?;
+    let describe: Function<'_, FnArgs<(Unknown<'_>, &str)>, Unknown<'_>> =
+        reflect.get_named_property("getOwnPropertyDescriptor")?;
+    let prototype = get.call((constructor, "prototype").into())?;
+    let descriptor = describe.call((prototype, member).into())?;
+    if descriptor.get_type()? != ValueType::Object {
+        return Ok(false);
+    }
+    // SAFETY: `descriptor` has `ValueType::Object`; the cast only wraps the handle.
+    let descriptor = unsafe { descriptor.cast::<Object<'_>>() }?;
+    let function = if descriptor.has_own_property("get")? {
+        descriptor.get_named_property::<Unknown<'_>>("get")?
+    } else if descriptor.has_own_property("value")? {
+        descriptor.get_named_property::<Unknown<'_>>("value")?
+    } else {
+        return Ok(false);
+    };
+    if function.get_type()? != ValueType::Function {
+        return Ok(false);
+    }
+    // A fresh object satisfies the `WeakMap#has` / `unregister` argument.
+    let argv = [Object::new(env)?.raw()];
+    let mut result = std::ptr::null_mut();
+    // SAFETY: every handle belongs to this `env` and outlives the call.
+    let status = unsafe {
+        napi::sys::napi_call_function(
+            env.raw(),
+            object.raw(),
+            function.raw(),
+            argv.len(),
+            argv.as_ptr(),
+            &mut result,
+        )
+    };
+    match status {
+        napi::sys::Status::napi_ok => Ok(true),
+        napi::sys::Status::napi_pending_exception => {
+            let mut exception = std::ptr::null_mut();
+            // SAFETY: clears the brand check's own `TypeError`.
+            napi::check_status!(unsafe {
+                napi::sys::napi_get_and_clear_last_exception(env.raw(), &mut exception)
+            })?;
+            Ok(false)
+        }
+        status => napi::check_status!(status).map(|()| false),
+    }
+}
+
+/// Whether `object`'s prototype is `null` or some realm's `Object.prototype`.
+///
+/// Cross-realm prototypes (e.g. from `node:vm`) are accepted only when their
+/// own `constructor` is a native `Object` whose own `prototype` points back.
+fn has_object_prototype(env: &Env, object: &Object<'_>) -> napi::Result<bool> {
+    let proto = object.get_prototype()?;
+    match proto.get_type()? {
+        ValueType::Null => return Ok(true),
+        ValueType::Object => {}
+        _ => return Ok(false),
+    }
+    if env.strict_equals(proto, Object::new(env)?.get_prototype()?)? {
+        return Ok(true);
+    }
+    // SAFETY: `proto` has `ValueType::Object`; the cast only wraps the handle.
+    let proto_object = unsafe { proto.cast::<Object<'_>>() }?;
+    if is_branded(env, &proto_object)?
+        || proto_object.get_prototype()?.get_type()? != ValueType::Null
+    {
+        return Ok(false);
+    }
+    let global = env.get_global()?;
+    let reflect: Object<'_> = global.get_named_property("Reflect")?;
+    let describe: Function<'_, FnArgs<(Unknown<'_>, &str)>, Unknown<'_>> =
+        reflect.get_named_property("getOwnPropertyDescriptor")?;
+    let Some(ctor) = own_data_value(&describe, proto, "constructor")? else {
+        return Ok(false);
+    };
+    if ctor.get_type()? != ValueType::Function {
+        return Ok(false);
+    }
+    // SAFETY: `Function` and `Function.prototype` are functions, hence objects;
+    // the casts only wrap the handles.
+    let function_proto = unsafe {
+        global
+            .get_named_property::<Unknown<'_>>("Function")?
+            .cast::<Object<'_>>()
+    }?
+    .get_named_property::<Unknown<'_>>("prototype")?;
+    let to_string: Function<'_, (), String> =
+        unsafe { function_proto.cast::<Object<'_>>() }?.get_named_property("toString")?;
+    if to_string.apply(ctor, ())? != "function Object() { [native code] }" {
+        return Ok(false);
+    }
+    match own_data_value(&describe, ctor, "prototype")? {
+        Some(ctor_proto) => env.strict_equals(ctor_proto, proto),
+        None => Ok(false),
+    }
+}
+
+/// Reads `target[key]` only when it is an own data property, so no getter runs.
+fn own_data_value<'env>(
+    describe: &Function<'_, FnArgs<(Unknown<'_>, &str)>, Unknown<'env>>,
+    target: Unknown<'_>,
+    key: &str,
+) -> napi::Result<Option<Unknown<'env>>> {
+    let descriptor = describe.call((target, key).into())?;
+    if descriptor.get_type()? != ValueType::Object {
+        return Ok(None);
+    }
+    // SAFETY: `descriptor` has `ValueType::Object`; it is a fresh plain object.
+    let descriptor = unsafe { descriptor.cast::<Object<'_>>() }?;
+    if !descriptor.has_own_property("value")? {
+        return Ok(None);
+    }
+    descriptor.get_named_property("value").map(Some)
 }
 
 /// Reads the optional `mode` property from an options object.
@@ -318,7 +586,7 @@ fn parse_mode_value(mode: &str) -> Result<SegmentMode> {
 }
 
 /// Reads the optional `dictionary` property from an options object.
-fn parse_dictionary(object: &Object<'_>) -> Result<Option<ParsedWords>> {
+fn parse_dictionary(env: &Env, object: &Object<'_>) -> Result<Option<ParsedWords>> {
     // Only own properties count: an inherited `Object.prototype.dictionary`
     // must not inject an option.
     if !object
@@ -333,7 +601,7 @@ fn parse_dictionary(object: &Object<'_>) -> Result<Option<ParsedWords>> {
         .flatten();
     match dictionary {
         None => Ok(None),
-        Some(dictionary) => parse_words(dictionary, Status::Options, "`dictionary`").map(Some),
+        Some(dictionary) => parse_words(env, dictionary, Status::Options, "`dictionary`").map(Some),
     }
 }
 
@@ -342,7 +610,7 @@ enum ParsedWords {
     /// Words without explicit frequencies.
     Names(Vec<String>),
     /// Words with explicit frequencies.
-    Frequencies(HashMap<String, f64>),
+    Frequencies(Vec<(String, f64)>),
 }
 
 /// Parses a JavaScript array of strings or a plain object of numbers.
@@ -350,7 +618,7 @@ enum ParsedWords {
 /// Arrays are distinguished from plain objects with a real array conversion
 /// (an object cannot be read as a JavaScript array), so `[1, 2]` is never
 /// mistaken for the frequency object `{"0": 1, "1": 2}`.
-fn parse_words(value: Unknown<'_>, status: Status, label: &str) -> Result<ParsedWords> {
+fn parse_words(env: &Env, value: Unknown<'_>, status: Status, label: &str) -> Result<ParsedWords> {
     let value_type = value
         .get_type()
         .map_err(|error| Error::new(status, format!("invalid {label}: {error}")))?;
@@ -361,17 +629,36 @@ fn parse_words(value: Unknown<'_>, status: Status, label: &str) -> Result<Parsed
         ));
     }
 
-    // SAFETY: the value is an object. `Array` conversion fails for plain
-    // objects, which is how the two accepted shapes are told apart.
-    if let Ok(array) = unsafe { value.cast::<Array<'_>>() } {
+    let shape_error = || {
+        Error::new(
+            status,
+            format!("{label} must be an array of strings or a plain object of word frequencies"),
+        )
+    };
+    // SAFETY: the value is an object; the cast only wraps the handle.
+    let object = unsafe { value.cast::<Object<'_>>() }.map_err(invalid(status, label))?;
+    // Proxies are rejected before any trap can run, including `Proxy([])`.
+    if is_branded(env, &object).map_err(invalid(status, label))? {
+        return Err(shape_error());
+    }
+
+    if object.is_array().map_err(invalid(status, label))? {
+        // SAFETY: `napi_is_array` confirmed a real JavaScript array.
+        let array = unsafe { value.cast::<Array<'_>>() }.map_err(invalid(status, label))?;
         // Never preallocate from the JS-controlled length: a huge or holey
         // array must fail cheaply on its first missing entry instead.
         let mut words = Vec::new();
         for index in 0..array.len() {
-            let word = array.get::<String>(index).map_err(|error| {
-                Error::new(status, format!("invalid {label} entry {index}: {error}"))
-            })?;
-            match word {
+            // Holes must not fall through to an inherited `Array.prototype[i]`.
+            let entry_error =
+                |error| Error::new(status, format!("invalid {label} entry {index}: {error}"));
+            if !array
+                .has_own_property(&index.to_string())
+                .map_err(entry_error)?
+            {
+                return Err(Error::new(status, format!("missing {label} entry {index}")));
+            }
+            match array.get::<String>(index).map_err(entry_error)? {
                 Some(word) => words.push(word),
                 None => {
                     return Err(Error::new(status, format!("missing {label} entry {index}")));
@@ -381,18 +668,46 @@ fn parse_words(value: Unknown<'_>, status: Status, label: &str) -> Result<Parsed
         return Ok(ParsedWords::Names(words));
     }
 
-    // SAFETY: the value is an object, as checked above.
-    let object = unsafe { value.cast::<Object<'_>>() }
-        .map_err(|error| Error::new(status, format!("invalid {label}: {error}")))?;
-    let keys = Object::keys(&object)
-        .map_err(|error| Error::new(status, format!("invalid {label}: {error}")))?;
-    let mut frequencies = HashMap::with_capacity(keys.len());
-    for key in keys {
-        let frequency = object
-            .get::<f64>(&key)
-            .map_err(|error| Error::new(status, format!("invalid frequency for `{key}`: {error}")))?
-            .ok_or_else(|| Error::new(status, format!("missing frequency for `{key}`")))?;
-        frequencies.insert(key, frequency);
+    if !has_object_prototype(env, &object).map_err(invalid(status, label))? {
+        return Err(shape_error());
+    }
+    // Own enumerable keys only, read with the original JS key so lone
+    // surrogates that collide after UTF-8 conversion are each validated.
+    let keys = object
+        .get_all_property_names(
+            KeyCollectionMode::OwnOnly,
+            KeyFilter::Enumerable,
+            KeyConversion::NumbersToStrings,
+        )
+        .map_err(invalid(status, label))?;
+    // SAFETY: `napi_get_all_property_names` always returns a JavaScript array.
+    let keys = unsafe { keys.to_unknown().cast::<Array<'_>>() }.map_err(invalid(status, label))?;
+    let mut frequencies = Vec::new();
+    for index in 0..keys.len() {
+        let Some(key) = keys
+            .get::<Unknown<'_>>(index)
+            .map_err(invalid(status, label))?
+        else {
+            continue;
+        };
+        // Symbol keys are ignored, matching `Object.keys`; a getter may also
+        // have deleted a later key mid-iteration.
+        if key.get_type().map_err(invalid(status, label))? != ValueType::String
+            || !object
+                .has_own_property_js(key)
+                .map_err(invalid(status, label))?
+        {
+            continue;
+        }
+        let frequency = object.get_property::<_, f64>(key).map_err(|error| {
+            Error::new(status, format!("invalid frequency in {label}: {error}"))
+        })?;
+        let name = key
+            .coerce_to_string()
+            .and_then(|name| name.into_utf8())
+            .and_then(|name| name.into_owned())
+            .map_err(invalid(status, label))?;
+        frequencies.push((name, frequency));
     }
     Ok(ParsedWords::Frequencies(frequencies))
 }

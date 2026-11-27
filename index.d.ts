@@ -43,14 +43,14 @@ export declare class Segmenter {
    */
   insertZwsp(text: string): string
   /**
-   * Adds custom words and returns this segmenter so calls can chain.
+   * Adds custom words in place and returns `this` (the same `Segmenter`
+   * instance) so calls can chain.
    *
-   * Accepts an array of words (default frequency) or an object mapping
-   * words to frequencies. Duplicate words keep the last frequency. The
-   * receiver is mutated and a cheap copy is returned, so
-   * `new Segmenter().addWords([...]).segment(...)` works.
+   * Accepts an array of words (default frequency) or a plain object mapping
+   * words to frequencies. Duplicate words keep the last frequency. If
+   * validation fails, the receiver is left unchanged.
    */
-  addWords(words: string[] | Record<string, number>): Segmenter
+  addWords(words: string[] | Record<string, number>): this
 }
 
 /**

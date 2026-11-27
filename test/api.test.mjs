@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { Segmenter, normalize, segment } from '../index.js'
 import { tokenTexts } from './helpers.mjs'
 
@@ -145,4 +146,285 @@ test('null and omitted options use the defaults', () => {
   assert.deepEqual(segment('ខ្ញុំ', null), ['ខ្ញុំ'])
   assert.deepEqual(segment('ខ្ញុំ', undefined), ['ខ្ញុំ'])
   assert.deepEqual(tokenTexts(new Segmenter(null).segment('ខ្ញុំ')), ['ខ្ញុំ'])
+})
+
+test('addWords returns the exact receiver', () => {
+  const segmenter = new Segmenter()
+  const returned = segmenter.addWords([CUSTOM_WORD])
+  assert.strictEqual(returned, segmenter)
+
+  returned.addWords([OTHER_CUSTOM_WORD])
+  assert.deepEqual(tokenTexts(segmenter.segment(OTHER_CUSTOM_WORD)), [OTHER_CUSTOM_WORD])
+  segmenter.addWords({ abc: 10 })
+  assert.deepEqual(tokenTexts(returned.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+})
+
+test('failed addWords leaves the receiver unchanged', () => {
+  const segmenter = new Segmenter({ dictionary: [CUSTOM_WORD] })
+  const before = tokenTexts(segmenter.segment(OTHER_CUSTOM_WORD))
+  assert.notDeepEqual(before, [OTHER_CUSTOM_WORD])
+
+  assertThrowsCode(() => segmenter.addWords([OTHER_CUSTOM_WORD, '']), 'ERR_KH_WORDS')
+  assertThrowsCode(() => segmenter.addWords(new Map([[OTHER_CUSTOM_WORD, 5]])), 'ERR_KH_WORDS')
+
+  assert.deepEqual(tokenTexts(segmenter.segment(OTHER_CUSTOM_WORD)), before)
+  assert.deepEqual(tokenTexts(segmenter.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+})
+
+test('non-plain objects are rejected in every position', () => {
+  const nonPlain = [
+    () => new Date(),
+    () => new Map(),
+    () => new Set(),
+    () => /regex/,
+    () => Buffer.from('x'),
+    () => new Uint8Array([1, 2]),
+    () => new ArrayBuffer(4),
+    () => new DataView(new ArrayBuffer(4)),
+    () => new Error('x'),
+    () => Promise.resolve(),
+    () => new Segmenter(),
+    () => Object.create({}),
+    () => new (class Custom {})(),
+    () => Object(1),
+    () => Object('x'),
+    () => Object.setPrototypeOf(new Date(), null),
+    () => Object.setPrototypeOf(Buffer.from('x'), Object.prototype),
+    () => runInNewContext('new Date()'),
+    () => runInNewContext('new Map()'),
+    () => Object.setPrototypeOf(new Map(), null),
+    () => Object.setPrototypeOf(new Set(), null),
+    () => Object.setPrototypeOf(new WeakMap(), null),
+    () => Object.setPrototypeOf(new WeakSet(), null),
+    () => Object.setPrototypeOf(/x/, null),
+    () => Object.setPrototypeOf(Object(1), null),
+    () => Object.setPrototypeOf(Object('x'), null),
+    () => Object.setPrototypeOf(Object(true), null),
+    () => Object.setPrototypeOf(Object(Symbol('s')), null),
+    () => Object.setPrototypeOf(Object(1n), null),
+    () => Object.setPrototypeOf(new SharedArrayBuffer(4), null),
+    () => Object.create(Object.create(null)),
+    () => {
+      const fake = Object.create(null)
+      fake.constructor = Object
+      return Object.create(fake)
+    },
+    () => new Proxy(new Date(), {}),
+    () => new Proxy({}, {}),
+    () => new Proxy(Object.create(null), {}),
+    () => new Proxy([], {}),
+    () => runInNewContext('Object.setPrototypeOf(new Map(), null)'),
+    () => runInNewContext('new Proxy({}, {})'),
+    () => Object.setPrototypeOf(new WeakRef({}), null),
+    () => Object.setPrototypeOf(new WeakRef({}), Object.prototype),
+    () => Object.setPrototypeOf(new FinalizationRegistry(() => {}), null),
+    () => Object.setPrototypeOf(new Segmenter(), null),
+    () => Object.setPrototypeOf(new Segmenter(), Object.prototype),
+    () => runInNewContext('Object.setPrototypeOf(new WeakRef({}), null)'),
+  ]
+
+  for (const make of nonPlain) {
+    const label = String(make)
+    assert.throws(() => segment('x', make()), { code: 'ERR_KH_OPTIONS' }, label)
+    assert.throws(() => new Segmenter(make()), { code: 'ERR_KH_OPTIONS' }, label)
+    assert.throws(() => new Segmenter({ dictionary: make() }), { code: 'ERR_KH_OPTIONS' }, label)
+    assert.throws(() => new Segmenter().addWords(make()), { code: 'ERR_KH_WORDS' }, label)
+  }
+
+  for (const options of [[], ['a'], Object.setPrototypeOf([], null)]) {
+    assertThrowsCode(() => segment('x', options), 'ERR_KH_OPTIONS')
+    assertThrowsCode(() => new Segmenter(options), 'ERR_KH_OPTIONS')
+  }
+
+  for (const words of [null, undefined, 1, 'x', true, Symbol('x'), 10n]) {
+    assertThrowsCode(() => new Segmenter().addWords(words), 'ERR_KH_WORDS')
+  }
+})
+
+test('plain objects are accepted from any realm or with a null prototype', () => {
+  const nullProto = Object.assign(Object.create(null), { mode: 'viterbi' })
+  const foreign = runInNewContext("({ mode: 'viterbi' })")
+  for (const options of [{}, { mode: 'viterbi' }, nullProto, foreign]) {
+    assert.deepEqual(segment('ខ្ញុំ', options), ['ខ្ញុំ'])
+    assert.deepEqual(tokenTexts(new Segmenter(options).segment('ខ្ញុំ')), ['ខ្ញុំ'])
+  }
+
+  const nullWords = Object.assign(Object.create(null), { [CUSTOM_WORD]: 50_000 })
+  const foreignWords = runInNewContext('({ [word]: 50_000 })', { word: CUSTOM_WORD })
+  for (const words of [{ [CUSTOM_WORD]: 50_000 }, nullWords, foreignWords]) {
+    const fromOptions = new Segmenter({ dictionary: words })
+    assert.deepEqual(tokenTexts(fromOptions.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+    const fromAdd = new Segmenter().addWords(words)
+    assert.deepEqual(tokenTexts(fromAdd.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+  }
+  assert.ok(new Segmenter({ dictionary: {} }) instanceof Segmenter)
+  assert.ok(new Segmenter().addWords(Object.create(null)) instanceof Segmenter)
+})
+
+test('prototype pollution does not inject options or words', () => {
+  const plain = new Segmenter()
+  const baseline = tokenTexts(plain.segment(CUSTOM_WORD))
+  assert.notDeepEqual(baseline, [CUSTOM_WORD])
+
+  try {
+    Object.prototype.mode = 'nope'
+    Object.prototype.dictionary = 42
+    Object.prototype[CUSTOM_WORD] = 50_000
+
+    assert.deepEqual(segment('ខ្ញុំ', {}), ['ខ្ញុំ'])
+    const fromOptions = new Segmenter({})
+    assert.deepEqual(tokenTexts(fromOptions.segment(CUSTOM_WORD)), baseline)
+    const fromDictionary = new Segmenter({ dictionary: { [OTHER_CUSTOM_WORD]: 25_000 } })
+    assert.deepEqual(tokenTexts(fromDictionary.segment(CUSTOM_WORD)), baseline)
+    const fromAdd = new Segmenter().addWords({ [OTHER_CUSTOM_WORD]: 25_000 })
+    assert.deepEqual(tokenTexts(fromAdd.segment(CUSTOM_WORD)), baseline)
+    assert.deepEqual(tokenTexts(fromAdd.segment(OTHER_CUSTOM_WORD)), [OTHER_CUSTOM_WORD])
+  } finally {
+    delete Object.prototype.mode
+    delete Object.prototype.dictionary
+    delete Object.prototype[CUSTOM_WORD]
+  }
+})
+
+test('hostile Proxies are rejected before any trap runs', () => {
+  let trapped = false
+  const boom = () => {
+    trapped = true
+    throw new Error('boom')
+  }
+  const hostile = () =>
+    new Proxy({ [CUSTOM_WORD]: 5 }, {
+      getPrototypeOf: boom,
+      getOwnPropertyDescriptor: boom,
+      ownKeys: boom,
+      get: boom,
+      has: boom,
+    })
+
+  assertThrowsCode(() => segment('x', hostile()), 'ERR_KH_OPTIONS')
+  assertThrowsCode(() => new Segmenter(hostile()), 'ERR_KH_OPTIONS')
+  assertThrowsCode(() => new Segmenter({ dictionary: hostile() }), 'ERR_KH_OPTIONS')
+  assertThrowsCode(() => new Segmenter().addWords(hostile()), 'ERR_KH_WORDS')
+  assert.equal(trapped, false)
+})
+
+test('throwing own getters surface as an Error without aborting', () => {
+  const throwing = (key) =>
+    Object.defineProperty({}, key, {
+      enumerable: true,
+      get() {
+        throw new Error('boom')
+      },
+    })
+
+  assert.throws(() => segment('x', throwing('mode')), Error)
+  assert.throws(() => new Segmenter(throwing('mode')), Error)
+  assert.throws(() => new Segmenter(throwing('dictionary')), Error)
+  assert.throws(() => new Segmenter({ dictionary: throwing(CUSTOM_WORD) }), Error)
+  assert.throws(() => new Segmenter().addWords(throwing(CUSTOM_WORD)), Error)
+  assert.deepEqual(segment('ខ្ញុំ'), ['ខ្ញុំ'])
+})
+
+test('sparse word arrays never read inherited entries', () => {
+  const baseline = tokenTexts(new Segmenter().segment(CUSTOM_WORD))
+  try {
+    Array.prototype[0] = CUSTOM_WORD
+    assertThrowsCode(() => new Segmenter({ dictionary: Array(1) }), 'ERR_KH_OPTIONS')
+    const segmenter = new Segmenter()
+    assertThrowsCode(() => segmenter.addWords(Array(1)), 'ERR_KH_WORDS')
+    assert.deepEqual(tokenTexts(segmenter.segment(CUSTOM_WORD)), baseline)
+  } finally {
+    delete Array.prototype[0]
+  }
+})
+
+test('every frequency key is validated, including colliding lone surrogates', () => {
+  assertThrowsCode(() => new Segmenter().addWords({ ['\uD800']: false }), 'ERR_KH_WORDS')
+  assertThrowsCode(() => new Segmenter({ dictionary: { ['\uD800']: false } }), 'ERR_KH_OPTIONS')
+  assertThrowsCode(
+    () => new Segmenter().addWords({ ['\uD800']: 0, ['\uD801']: 500 }),
+    'ERR_KH_WORDS',
+  )
+
+  const withSymbol = { [Symbol('x')]: 'ignored', [CUSTOM_WORD]: 50_000 }
+  const segmenter = new Segmenter().addWords(withSymbol)
+  assert.deepEqual(tokenTexts(segmenter.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+  const fromOptions = new Segmenter({ dictionary: withSymbol })
+  assert.deepEqual(tokenTexts(fromOptions.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+})
+
+test('brand checks still apply without process.getBuiltinModule', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule')
+  try {
+    delete process.getBuiltinModule
+    assert.equal(process.getBuiltinModule, undefined)
+
+    const foreign = runInNewContext("({ mode: 'viterbi' })")
+    for (const options of [{}, Object.create(null), foreign]) {
+      assert.deepEqual(segment('ខ្ញុំ', options), ['ខ្ញុំ'])
+      assert.ok(new Segmenter(options) instanceof Segmenter)
+    }
+    for (const words of [{}, Object.create(null), runInNewContext('({})')]) {
+      assert.ok(new Segmenter({ dictionary: words }) instanceof Segmenter)
+      assert.ok(new Segmenter().addWords(words) instanceof Segmenter)
+    }
+
+    const nonPlain = [
+      () => Object.setPrototypeOf(new Map(), null),
+      () => Object.setPrototypeOf(new Set(), null),
+      () => Object.setPrototypeOf(/x/, null),
+      () => Object.setPrototypeOf(Object(1), null),
+      () => Object.setPrototypeOf(new WeakRef({}), null),
+      () => Object.setPrototypeOf(new FinalizationRegistry(() => {}), null),
+      () => Object.setPrototypeOf(new Segmenter(), null),
+      () => new Proxy(new Date(), {}),
+      () => new Proxy({}, {}),
+      () => new Proxy([], {}),
+      () => Object.create(Object.create(null)),
+    ]
+    for (const make of nonPlain) {
+      const label = String(make)
+      assert.throws(() => segment('x', make()), { code: 'ERR_KH_OPTIONS' }, label)
+      assert.throws(() => new Segmenter(make()), { code: 'ERR_KH_OPTIONS' }, label)
+      assert.throws(() => new Segmenter({ dictionary: make() }), { code: 'ERR_KH_OPTIONS' }, label)
+      assert.throws(() => new Segmenter().addWords(make()), { code: 'ERR_KH_WORDS' }, label)
+    }
+  } finally {
+    if (descriptor) Object.defineProperty(process, 'getBuiltinModule', descriptor)
+  }
+  assert.equal(typeof process.getBuiltinModule, 'function')
+})
+
+test('Object.prototype.get accessor does not run during brand checks', () => {
+  try {
+    Object.defineProperty(Object.prototype, 'get', {
+      configurable: true,
+      get() {
+        throw new Error('Object.prototype.get ran')
+      },
+    })
+
+    assert.deepEqual(segment('ខ្ញុំ', {}), ['ខ្ញុំ'])
+    assert.ok(new Segmenter({}) instanceof Segmenter)
+    const fromDict = new Segmenter({ dictionary: { [CUSTOM_WORD]: 50_000 } })
+    assert.deepEqual(tokenTexts(fromDict.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+    const fromAdd = new Segmenter().addWords({ [CUSTOM_WORD]: 50_000 })
+    assert.deepEqual(tokenTexts(fromAdd.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+  } finally {
+    delete Object.prototype.get
+  }
+})
+
+test('own enumerable Symbol getters on frequency maps are never invoked', () => {
+  const withSymbolGetter = Object.defineProperty({ [CUSTOM_WORD]: 50_000 }, Symbol('probe'), {
+    enumerable: true,
+    get() {
+      throw new Error('symbol getter ran')
+    },
+  })
+
+  const fromDict = new Segmenter({ dictionary: withSymbolGetter })
+  assert.deepEqual(tokenTexts(fromDict.segment(CUSTOM_WORD)), [CUSTOM_WORD])
+  const fromAdd = new Segmenter().addWords(withSymbolGetter)
+  assert.deepEqual(tokenTexts(fromAdd.segment(CUSTOM_WORD)), [CUSTOM_WORD])
 })

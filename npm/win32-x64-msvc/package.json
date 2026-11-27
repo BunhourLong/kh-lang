@@ -8,7 +8,7 @@
   "description": "Khmer word segmentation for Node.js, powered by a pure-Rust core.",
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": "^20.16.0 || >=22.3.0"
   },
   "repository": {
     "type": "git",

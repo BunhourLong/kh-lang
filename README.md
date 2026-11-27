@@ -13,7 +13,7 @@ one function, a reusable `Segmenter` class, and a small normalizer.
 npm install kh-lang
 ```
 
-Requires Node.js 20 or newer. The package is a native addon built with
+Requires Node.js 20.16+ (or 22.3+ / 24+). The package is a native addon built with
 [napi-rs](https://napi.rs/). Prebuilt binaries ship for macOS (x64/arm64),
 Linux glibc (x64/arm64), and Windows (x64) as platform packages
 (`kh-lang-<platform>`) that npm installs automatically through
@@ -69,8 +69,9 @@ Methods:
 - `.insertZwsp(text)` — returns text with U+200B ZWSP between adjacent Khmer
   words. Existing ZWSP are preserved; removing the inserted ZWSP restores the
   input.
-- `.addWords(words)` — adds words (array or frequency map), mutates the
-  receiver, and returns a `Segmenter` so calls can chain.
+- `.addWords(words)` — adds words (array or frequency map) to the receiver in
+  place and returns `this` (the same `Segmenter` instance) so calls can chain.
+  If validation fails it throws and leaves the receiver unchanged.
 
 A `Token` has three fields:
 
