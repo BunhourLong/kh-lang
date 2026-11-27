@@ -9,7 +9,7 @@
 | T6 tests+ci+docs | done | 68dbb73 | — |
 | T7 review+publish | done (all 6 pkgs live on npm @0.1.0; clean install verified) | 8e96ef1 | — |
 | T8 v0.1.1-core-correctness | done | 4aba07c | — |
-| T9 v0.1.1-js-validation-and-release | todo | — | next task for v0.1.1 |
+| T9 v0.1.1-js-validation-and-release | done (local; ready to push/tag v0.1.1) | 567e485, 45779a2 | awaiting explicit user push/tag v0.1.1 |
 | T10 v0.2.0-dictionary-overlay-and-prefix-lookup | todo | — | queued for v0.2.0 (after v0.1.1) |
 | T11 v0.2.0-release-profile-and-benchmarks | todo | — | blocked on T10 |
 | T12 v0.3.0-musl-win-arm64-and-wasm | todo | — | queued for v0.3.0 (after v0.2.0) |
@@ -66,4 +66,5 @@ Live npm status verified:
 - All 6 packages (`kh-lang`, `kh-lang-darwin-arm64`, `kh-lang-darwin-x64`, `kh-lang-linux-arm64-gnu`, `kh-lang-linux-x64-gnu`, `kh-lang-win32-x64-msvc`) are live at `0.1.0` (with SLSA provenance on `kh-lang` and `kh-lang-win32-x64-msvc`).
 - End-to-end clean `npm install kh-lang` verified via Haiku in an isolated temp dir under both CommonJS and ESM (`segment` in `bimm`/`viterbi`, `Segmenter.segment`/`.split` UTF-16 offsets, `insertZwsp`, `addWords`, `normalize`, `ERR_KH_OPTIONS`/`ERR_KH_WORDS`).
 Verified at T8 (`4aba07c`): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (59 unit + 9 doctests), `npm test` (31/31; `gold-100`: 25 mode disagreements, BIMM F1 `0.9434`, Viterbi F1 `0.9845`, byte-identical `generate-gold.mjs`), and `npx tsc --noEmit` all pass. Implemented by Opus 5.5 (`claudeAgent_2`); fresh reviews by Codex GPT-6.2 Sol (`codex`) through 2 repair rounds (fixed-point `insert_zwsp` idempotency choice recorded in `decisions.md`).
-Next: run `T9` (`v0.1.1-js-validation-and-release`) in a fresh Delikit session (plus optional npm Trusted Publishing OIDC setup for `release.yml`).
+Verified at T9 (`567e485`, `45779a2`): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` (0 + 59 unit + 9 doctests), `npm test` (43/43), `npx tsc --noEmit`, byte-identical `generate-gold.mjs` (100 sentences, 25 mode disagreements), and `npm pack --dry-run` (`0.1.1`, 6 files) all pass. Implemented by Opus 5.5 (`claudeAgent_2`); fresh Codex GPT-6.2 Sol (`codex`) coding reviews across 2 repair rounds plus user-approved final cleanup (`has_own_property` descriptor guard in `has_slot` and excluding `isCryptoKey`/`isKeyObject`); fresh Opus 5.5 (`claudeAgent_2`, `effort: high`) pre-push branch `security-audit` (`origin/main..HEAD`, `6dcbfd3..45779a2`, `.github/` unchanged) returned `0 confirmed findings` (noting one pre-existing NIT at `crates/kh-lang-core/src/segmenter.rs:168`).
+Next: upon explicit user authorization, push `main` and tag `v0.1.1` (`git push origin main && git tag v0.1.1 && git push origin v0.1.1`), then run `T10` (`v0.2.0-dictionary-overlay-and-prefix-lookup`) in a new chat.
