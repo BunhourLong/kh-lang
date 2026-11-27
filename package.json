@@ -1,6 +1,6 @@
 {
   "name": "kh-lang",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Khmer word segmentation for Node.js, powered by a pure-Rust core.",
   "license": "MIT",
   "repository": {
